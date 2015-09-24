@@ -2,6 +2,10 @@
 #include <cstdlib>
 #include <cassert>
 #include <cilkpub/dotmix.h>
+#include <iostream>
+#include <ostream>
+
+using std::ostream;
 
 int MarsagliaXOR(int *p_seed) {
     int seed = *p_seed;
@@ -87,11 +91,10 @@ order by
 l_returnflag,
 l_linestatus;
 */
+#define OUT(x) #x << ": " << x << " "
 
 
 struct q1out {
-	char l_returnflag;
-	char l_linestatus;
 	int sum_qt;
 	int sum_base_price;
 	int sum_disc_price;
@@ -100,6 +103,21 @@ struct q1out {
 	int avg_price;
 	int avg_disc;
 	int count;
+
+	friend ostream & operator<<(ostream &o, const q1out &q) {
+		o << "{ "\
+				<< OUT(q.sum_qt) \
+				<< OUT(q.sum_base_price) \
+				<< OUT(q.sum_disc_price) \
+				<< OUT(q.sum_charge) \
+				<< OUT(q.avg_qty) \
+				<< OUT(q.avg_price) \
+				<< OUT(q.avg_disc) \
+				<< OUT(q.count)
+		<< "}";
+
+		return o;
+	}
 };
 
 
@@ -118,7 +136,7 @@ int date_of(int yr, int month, int day){
 static const int k_flags = 3;
 static const int k_status = 2;
 
-void tpch_q1_as(Lineitem *l, size_t len, q1out *out) {
+void tpch_q1_as(Lineitem *l, size_t len, q1out out[k_flags][k_status]) {
 	int acc_counts[k_flags][k_status] {};
 	int acc_quantity[3][2] {};
 	int acc_baseprice[3][2] {};
@@ -142,12 +160,17 @@ void tpch_q1_as(Lineitem *l, size_t len, q1out *out) {
 	}
 
 
-	for (int flag = 0; flag < k_flags; flag++){
-	  for (int status = 0; status < k_status; status++){
-	    auto & op = out[flag * k_status + status];
-	    op.l_linestatus = status;
-	    op.l_returnflag = flag;
+	for (int flag = 0; flag < k_flags; flag++) {
+	  for (int status = 0; status < k_status; status++) {
+	    auto & op = out[flag][status];
 	    op.sum_base_price = acc_baseprice[flag][status];
+	    op.sum_qt = acc_quantity[flag][status];
+	    op.sum_disc_price= acc_discounted[flag][status];
+	    op.sum_charge = acc_disctax[flag][status];
+	    op.count = acc_counts[flag][status];
+	    op.avg_disc = 0;
+	    op.avg_price = 0;
+	    op.avg_qty = 0;
 	  }
 	}
 }
@@ -185,13 +208,24 @@ void generateData(Lineitem *l, size_t len)
   }
 }
 
+void print_results(q1out res[k_flags][k_status]){
+
+}
+
+
 int main(){
 	auto *items = new Lineitem[ITEMS];
 	generateData(items, ITEMS);
 
-	q1out ans[k_flags*k_status] {};
+	q1out ans[k_flags][k_status] {};
 
 	for (int i = 0; i < 10; ++i){
 		tpch_q1_as(items, ITEMS, ans);
+	}
+
+	for (int i = 0; i < k_flags; ++i){
+		for (int j = 0; j < k_status; ++j){
+			std::cout << "l_linestatus: " << j << " l_returnflag: " << i << " " << ans[i][j] << std::endl;
+		}
 	}
 }

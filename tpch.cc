@@ -1,6 +1,7 @@
 #include <tuple>
 #include <cstdlib>
 #include <cassert>
+#include <cilkpub/dotmix.h>
 
 int MarsagliaXOR(int *p_seed) {
     int seed = *p_seed;
@@ -161,23 +162,27 @@ struct Lineitems {
 	int *l_shipdate; //where
 };
 
-int g_s = 0xabc;
-
-void generateItem (Lineitem *l) {
-	l->l_quantity = MarsagliaXOR(&g_s) % 100;
-	l->l_extendedprice = MarsagliaXOR(&g_s) % 1000 + 100;
-	l->l_discount = MarsagliaXOR(&g_s) % 40 + 1;
-	l->l_tax = MarsagliaXOR(&g_s) % 10 + 1;
-	l->l_returnflag = MarsagliaXOR(&g_s) % 3;
-	l->l_linestatus = MarsagliaXOR(&g_s) % 2;
-	l->l_shipdate = date_of(1990 + (MarsagliaXOR(&g_s) % 10), 0, 0);
+void generateItem (Lineitem *l, cilkpub::DotMix &c) {
+  uint64_t v = c.get();
+  int g_s = v;
+  l->l_quantity = MarsagliaXOR(&g_s) % 100;
+  l->l_extendedprice = MarsagliaXOR(&g_s) % 1000 + 100;
+  l->l_discount = MarsagliaXOR(&g_s) % 40 + 1;
+  l->l_tax = MarsagliaXOR(&g_s) % 10 + 1;
+  l->l_returnflag = MarsagliaXOR(&g_s) % 3;
+  l->l_linestatus = MarsagliaXOR(&g_s) % 2;
+  l->l_shipdate = date_of(1990 + (MarsagliaXOR(&g_s) % 10), 0, 0);
 }
 
 void generateData(Lineitem *l, size_t len)
 {
-	_Cilk_for ( size_t i = 0; i < len; i++ )  {
-		generateItem(l + i);
-	}
+  cilkpub::pedigree_scope scope = cilkpub::pedigree_scope::current();
+  cilkpub::DotMix dprng(0xabc);
+  dprng.init_scope(scope);
+  
+  _Cilk_for ( size_t i = 0; i < len; i++ )  {
+    generateItem(l + i, dprng);
+  }
 }
 
 int main(){

@@ -1,4 +1,4 @@
 tpch: tpch.cc
-	g++ --std=c++14 -Wall -Wextra -Wno-unused-parameter -Werror -fcilkplus -O2 -g -Wno-macro-redefined tpch.cc -DITEMS=100000000 -Wno-char-subscripts -o tpch
+	$(CXX) --std=c++14 -Wall -Wextra -Wno-unused-parameter -Werror -fcilkplus -O2 -g -Wno-macro-redefined tpch.cc -DITEMS=100000000 -Wno-char-subscripts -o tpch
 clean:
-	rm *~ a.out tpch
+	rm -f *~ a.out tpch

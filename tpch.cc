@@ -1,7 +1,6 @@
 #include <tuple>
 #include <cstdlib>
 #include <cassert>
-#define ITEMS 2000
 
 int MarsagliaXOR(int *p_seed) {
     int seed = *p_seed;
@@ -29,8 +28,8 @@ struct Lineitem {
 	int l_extendedprice;
 	int l_discount;
 	int l_tax;
-	int l_returnflag;
-	int l_linestatus;
+	char l_returnflag;
+	char l_linestatus;
 	int l_shipdate;
 	int l_commitdate;
 	int l_receiptdate;
@@ -90,8 +89,8 @@ l_linestatus;
 
 
 struct q1out {
-	int l_returnflag;
-	int l_linestatus;
+	char l_returnflag;
+	char l_linestatus;
 	int sum_qt;
 	int sum_base_price;
 	int sum_disc_price;
@@ -176,7 +175,7 @@ void generateItem (Lineitem *l) {
 
 void generateData(Lineitem *l, size_t len)
 {
-	for ( size_t i = 0; i < len; i++ )  {
+	_Cilk_for ( size_t i = 0; i < len; i++ )  {
 		generateItem(l + i);
 	}
 }
@@ -186,5 +185,8 @@ int main(){
 	generateData(items, ITEMS);
 
 	q1out ans[k_flags*k_status] {};
-	tpch_q1_as(items, ITEMS, ans);
+
+	for (int i = 0; i < 1000; ++i){
+		tpch_q1_as(items, ITEMS, ans);
+	}
 }

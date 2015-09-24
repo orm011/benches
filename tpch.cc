@@ -141,15 +141,15 @@ void tpch_q1_as(Lineitem *l, size_t len, q1out *out) {
 		}
 	}
 
-//	for (int flag = 0; flag < k_flags; flag++){
-//		for (int status = 0; status < k_status; status++){
-//			auto & op = out[flag * k_status + status];
-//			op.l_linestatus = status;
-//			op.l_returnflag = flag;
-//			op.sum_base_price =
-//		}
-//	}
 
+	for (int flag = 0; flag < k_flags; flag++){
+	  for (int status = 0; status < k_status; status++){
+	    auto & op = out[flag * k_status + status];
+	    op.l_linestatus = status;
+	    op.l_returnflag = flag;
+	    op.sum_base_price = acc_baseprice[flag][status];
+	  }
+	}
 }
 
 struct Lineitems {
@@ -191,7 +191,7 @@ int main(){
 
 	q1out ans[k_flags*k_status] {};
 
-	for (int i = 0; i < 1000; ++i){
+	for (int i = 0; i < 10; ++i){
 		tpch_q1_as(items, ITEMS, ans);
 	}
 }

@@ -25,22 +25,22 @@ int MarsagliaXOR(int *p_seed) {
 
 
 struct Lineitem {
-	int l_orderkey;
+	int l_orderkey; // too narrow?
 	int l_partkey;
 	int l_suppkey;
 	int l_linenumber;
 	int l_quantity;
 	int l_extendedprice;
-	int l_discount;
-	int l_tax;
+	char l_discount;
+	char l_tax;
 	char l_returnflag;
 	char l_linestatus;
 	int l_shipdate;
 	int l_commitdate;
 	int l_receiptdate;
 	int l_shipinstruct;
-	int l_shipmode;
-	int l_comment;
+	int l_shipmode; // too wide?
+	int l_comment; // too narrow?
 
 	auto toTuple() const {
 		auto x =  std::tie(l_orderkey,
@@ -136,7 +136,29 @@ int date_of(int yr, int month, int day){
 static const int k_flags = 3;
 static const int k_status = 2;
 
-void tpch_q1_as(Lineitem *l, size_t len, q1out out[k_flags][k_status]) {
+struct LineitemColumnar {
+
+	LineitemColumnar(size_t len) : len(len) {
+		l_quantity = new int[len];
+		l_shipdate = new int[len];
+		l_extendedprice = new int[len];
+		l_discount = new char[len]; /*0 to 100.*/
+		l_tax = new char[len]; /*0 to 100*/
+		l_returnflag = new char[len]; /* 2 values*/
+		l_linestatus = new char[len]; /* 3 values*/
+	}
+
+	size_t len;
+	int *l_quantity;
+	int *l_extendedprice;
+	char *l_discount;
+	char *l_tax;
+	char *l_returnflag;
+	char *l_linestatus;
+	int *l_shipdate; //where
+};
+
+void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status]){
 	int acc_counts[k_flags][k_status] {};
 	int acc_quantity[3][2] {};
 	int acc_baseprice[3][2] {};
@@ -144,18 +166,19 @@ void tpch_q1_as(Lineitem *l, size_t len, q1out out[k_flags][k_status]) {
 	int acc_disctax[3][2] {};
 
 	const int k_date = date_of(1998, 1, 1); // 10% selectivity.
-  
-	for (size_t i = 0; i < len; ++i) {
-		const auto & item = l[i];
-		if (item.l_shipdate <= k_date) {
-			auto &flag = item.l_returnflag;
-			auto &status = item.l_linestatus;
+
+	for (size_t i = 0; i < l->len; ++i) {
+		//const auto & item = l[i];
+		if (l->l_shipdate[i] <= k_date) {
+			auto &flag = l->l_returnflag[i];
+			auto &status = l->l_linestatus[i];
 
 			acc_counts[flag][status] += 1;
-			acc_quantity[flag][status] += item.l_quantity;
-			acc_baseprice[flag][status] += item.l_extendedprice;
-			acc_discounted[flag][status] += (item.l_extendedprice * (100 - item.l_discount))/100;
-			acc_disctax[flag][status] += (item.l_extendedprice * (100 - item.l_discount) * (100 + item.l_tax))/ 1'00'00 ;
+			acc_quantity[flag][status] += l->l_quantity[i];
+			acc_baseprice[flag][status] += l->l_extendedprice[i];
+			acc_discounted[flag][status] += l->l_extendedprice[i] * (100 - l->l_discount[i])/100;
+			acc_disctax[flag][status] += (l->l_extendedprice[i]
+															 * (100 - l->l_discount[i]) * (100 + l->l_tax[i]))/1'00'00 ;
 		}
 	}
 
@@ -175,16 +198,6 @@ void tpch_q1_as(Lineitem *l, size_t len, q1out out[k_flags][k_status]) {
 	}
 }
 
-struct Lineitems {
-	int *l_quantity;
-	int *l_extendedprice;
-	int *l_discount;
-	int *l_tax;
-	int *l_returnflag;
-	int *l_linestatus;
-	int *l_shipdate; //where
-};
-
 void generateItem (Lineitem *l, cilkpub::DotMix &c) {
   uint64_t v = c.get();
   int g_s = v;
@@ -197,7 +210,31 @@ void generateItem (Lineitem *l, cilkpub::DotMix &c) {
   l->l_shipdate = date_of(1990 + (MarsagliaXOR(&g_s) % 10), 0, 0);
 }
 
-void generateData(Lineitem *l, size_t len)
+void generateItem (LineitemColumnar *l, size_t i, cilkpub::DotMix &c){
+	  uint64_t v = c.get();
+	  int g_s = v;
+	  l->l_quantity[i] = MarsagliaXOR(&g_s) % 100;
+	  l->l_extendedprice[i] = MarsagliaXOR(&g_s) % 1000 + 100;
+	  l->l_discount[i] = MarsagliaXOR(&g_s) % 40 + 1;
+	  l->l_tax[i] = MarsagliaXOR(&g_s) % 10 + 1;
+	  l->l_returnflag[i] = MarsagliaXOR(&g_s) % 3;
+	  l->l_linestatus[i] = MarsagliaXOR(&g_s) % 2;
+	  l->l_shipdate[i] = date_of(1990 + (MarsagliaXOR(&g_s) % 10), 0, 0);
+}
+
+void generateDataColumns(LineitemColumnar *l)
+{
+  cilkpub::pedigree_scope scope = cilkpub::pedigree_scope::current();
+  cilkpub::DotMix dprng(0xabc);
+  dprng.init_scope(scope);
+
+  _Cilk_for ( size_t i = 0; i < l->len; i++ )  {
+    generateItem(l, i, dprng);
+  }
+}
+
+
+void generateDataRows(Lineitem *l, size_t len)
 {
   cilkpub::pedigree_scope scope = cilkpub::pedigree_scope::current();
   cilkpub::DotMix dprng(0xabc);
@@ -208,19 +245,15 @@ void generateData(Lineitem *l, size_t len)
   }
 }
 
-void print_results(q1out res[k_flags][k_status]){
-
-}
-
-
 int main(){
-	auto *items = new Lineitem[ITEMS];
-	generateData(items, ITEMS);
+
+	LineitemColumnar data(ITEMS);
+	generateDataColumns(&data);
 
 	q1out ans[k_flags][k_status] {};
 
 	for (int i = 0; i < 10; ++i){
-		tpch_q1_as(items, ITEMS, ans);
+		tpch_q1_columnar(&data, ans);
 	}
 
 	for (int i = 0; i < k_flags; ++i){

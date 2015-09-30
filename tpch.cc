@@ -96,14 +96,14 @@ l_linestatus;
 
 
 struct q1out {
-	int sum_qt;
-	int sum_base_price;
-	int sum_disc_price;
-	int sum_charge;
-	int avg_qty;
-	int avg_price;
-	int avg_disc;
-	int count;
+	int64_t  sum_qt;
+	int64_t sum_base_price;
+	int64_t sum_disc_price;
+	int64_t sum_charge;
+	int64_t avg_qty;
+	int64_t avg_price;
+	int64_t avg_disc;
+	int64_t count;
 
 	friend ostream & operator<<(ostream &o, const q1out &q) {
 		o << "{ "\
@@ -178,9 +178,10 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status]){
 			acc_baseprice[flag][status] += l->l_extendedprice[i];
 
 			int discounted = (l->l_extendedprice[i] * (100 - l->l_discount[i]))/100;
-
 			acc_discounted[flag][status] += discounted;
-			acc_disctax[flag][status] += (discounted * (100 + l->l_tax[i]))/100 ;
+
+			int taxed = (discounted * (100 + l->l_tax[i]))/100;
+			acc_disctax[flag][status] += taxed;
 		}
 	}
 
@@ -193,9 +194,9 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status]){
 	    op.sum_disc_price= acc_discounted[flag][status];
 	    op.sum_charge = acc_disctax[flag][status];
 	    op.count = acc_counts[flag][status];
-	    op.avg_disc = 0;
-	    op.avg_price = 0;
-	    op.avg_qty = 0;
+	    op.avg_disc = op.sum_disc_price/op.count;
+	    op.avg_price = op.sum_base_price/op.count;
+	    op.avg_qty = op.sum_qt/op.count;
 	  }
 	}
 }
@@ -248,7 +249,6 @@ void generateDataRows(Lineitem *l, size_t len)
 }
 
 int main(){
-
 
 	char * repsvar = getenv("REPS");
 	int reps = 1;

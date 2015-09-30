@@ -160,11 +160,11 @@ struct LineitemColumnar {
 };
 
 void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status]){
-	int acc_counts[k_flags][k_status] {};
-	int acc_quantity[3][2] {};
-	int acc_baseprice[3][2] {};
-	int acc_discounted[3][2] {};
-	int acc_disctax[3][2] {};
+	int64_t acc_counts[k_flags][k_status] {};
+	int64_t acc_quantity[3][2] {};
+	int64_t acc_baseprice[3][2] {};
+	int64_t acc_discounted[3][2] {};
+	int64_t acc_disctax[3][2] {};
 
 	const int k_date = date_of(1998, 1, 1); // 10% selectivity.
 

@@ -169,7 +169,6 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status]){
 	const int k_date = date_of(1998, 1, 1); // 10% selectivity.
 
 	for (size_t i = 0; i < l->len; ++i) {
-		//const auto & item = l[i];
 		if (l->l_shipdate[i] <= k_date) {
 			auto &flag = l->l_returnflag[i];
 			auto &status = l->l_linestatus[i];
@@ -250,16 +249,32 @@ void generateDataRows(Lineitem *l, size_t len)
 
 int main(){
 
-	LineitemColumnar data(ITEMS);
+
+	char * repsvar = getenv("REPS");
+	int reps = 1;
+
+	char * itemsvar = getenv("ITEMS");
+	int items = 1000;
+
+	if (repsvar) {
+		reps = std::strtol(repsvar, nullptr, 10);
+	}
+
+	if (itemsvar) {
+		items = std::strtol(itemsvar, nullptr, 10);
+	}
+
+	LineitemColumnar data(items);
 	generateDataColumns(&data);
 
 	q1out ans[k_flags][k_status] {};
 
-	for (int i = 0; i < 10; ++i){
+	for (int i = 0; i < reps; ++i) {
 		memset(ans, 0, sizeof(ans));
 		tpch_q1_columnar(&data, ans);
 	}
 
+	std::cout << "reps: " << reps << ", items:" << items << std::endl;
 	for (int i = 0; i < k_flags; ++i){
 		for (int j = 0; j < k_status; ++j){
 			std::cout << "l_linestatus: " << j << " l_returnflag: " << i << " " << ans[i][j] << std::endl;

@@ -176,9 +176,11 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status]){
 			acc_counts[flag][status] += 1;
 			acc_quantity[flag][status] += l->l_quantity[i];
 			acc_baseprice[flag][status] += l->l_extendedprice[i];
-			acc_discounted[flag][status] += l->l_extendedprice[i] * (100 - l->l_discount[i])/100;
-			acc_disctax[flag][status] += (l->l_extendedprice[i]
-															 * (100 - l->l_discount[i]) * (100 + l->l_tax[i]))/1'00'00 ;
+
+			int discounted = (l->l_extendedprice[i] * (100 - l->l_discount[i]))/100;
+
+			acc_discounted[flag][status] += discounted;
+			acc_disctax[flag][status] += (discounted * (100 + l->l_tax[i]))/100 ;
 		}
 	}
 

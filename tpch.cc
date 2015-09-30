@@ -168,7 +168,6 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status]){
 	const int k_date = date_of(1998, 1, 1); // 10% selectivity.
 
 	for (size_t i = 0; i < l->len; ++i) {
-		//const auto & item = l[i];
 		if (l->l_shipdate[i] <= k_date) {
 			auto &flag = l->l_returnflag[i];
 			auto &status = l->l_linestatus[i];
@@ -254,7 +253,7 @@ int main(){
 
 	q1out ans[k_flags][k_status] {};
 
-	for (int i = 0; i < 10; ++i){
+	for (int i = 0; i < 20; ++i){
 		tpch_q1_columnar(&data, ans);
 	}
 

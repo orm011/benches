@@ -4,6 +4,7 @@
 #include <cilkpub/dotmix.h>
 #include <iostream>
 #include <ostream>
+#include <string.h>
 
 using std::ostream;
 
@@ -255,6 +256,7 @@ int main(){
 	q1out ans[k_flags][k_status] {};
 
 	for (int i = 0; i < 10; ++i){
+		memset(ans, 0, sizeof(ans));
 		tpch_q1_columnar(&data, ans);
 	}
 

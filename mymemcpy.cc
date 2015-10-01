@@ -20,7 +20,7 @@ int main(int ac, char** av) {
 
 	int sizemb = vm["sizemb"].as<int>();
 	int reps = vm["reps"].as<int>();
-	int threads = vm["cores"].as<int>();
+	int threads = vm["threads"].as<int>();
 
 	uint64_t sizeb = ((uint64_t)sizemb)*(1 << 20);
 	vector<uint64_t*> arrs(threads);

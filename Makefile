@@ -1,6 +1,6 @@
 CXXWARNS=-Wall -Wextra -Wno-unused-parameter -Werror -Wno-macro-redefined -Wno-char-subscripts
 LDDFLAGS=-lboost_program_options
-CXXFLAGS=--std=c++14 -march=native -mtune=native -O3 -g $(CXXWARNS) -fcilkplus
+CXXFLAGS=--std=c++14 -march=native -mtune=native -O0 -g $(CXXWARNS) -fcilkplus
 CILKFLAGS=-I$(CILKPUB)
 
 tpch: tpch.cc

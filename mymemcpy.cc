@@ -19,7 +19,7 @@ int main(int ac, char** av) {
 	int sizemb = vm["sizemb"].as<int>();
 	int reps = vm["reps"].as<int>();
 
-	int sizeb = sizemb*(1 << 20);
+	uint64_t sizeb = ((uint64_t)sizemb)*(1 << 20);
 	uint64_t * bytes = new uint64_t[sizeb/8];
 	auto startt = clk::now();
 	for  (int i = 0; i < reps; ++i) {

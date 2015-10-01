@@ -16,6 +16,7 @@
 #include <chrono>
 #include <cassert>
 #include <boost/program_options.hpp>
+#include <thread>
 
 using namespace std;
 using namespace chrono;

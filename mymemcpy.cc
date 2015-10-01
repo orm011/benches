@@ -23,8 +23,8 @@ int main(int ac, char** av) {
 	int threads = vm["threads"].as<int>();
 
 	uint64_t sizeb = ((uint64_t)sizemb)*(1 << 20);
-	vector<uint64_t*> arrs(threads);
-	vector<thread> workers(threads);
+	vector<uint64_t*> arrs;
+	vector<thread> workers;
 
 	for (auto i = 0; i < threads; ++i) {
 		auto mem = new uint64_t[sizeb/8];

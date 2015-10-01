@@ -1,10 +1,7 @@
 #include <tuple>
-#include <cstdlib>
-#include <cassert>
 #include <cilkpub/dotmix.h>
-#include <iostream>
 #include <ostream>
-#include <string.h>
+#include "common.h"
 
 using std::ostream;
 
@@ -248,21 +245,25 @@ void generateDataRows(Lineitem *l, size_t len)
   }
 }
 
-int main(){
+int main(int ac, char** av){
+	po::options_description desc("Allowed options");
+	desc.add_options()
+		("help", "show this")
+	    ("items", po::value<int>()->default_value(1024), "items in lineitem")
+	    ("reps", po::value<int>()->default_value(1), "number of repetitions");
 
-	char * repsvar = getenv("REPS");
-	int reps = 1;
+	po::variables_map vm;
+	po::store(po::parse_command_line(ac, av, desc), vm);
+	po::notify(vm);
 
-	char * itemsvar = getenv("ITEMS");
-	int items = 1000;
-
-	if (repsvar) {
-		reps = std::strtol(repsvar, nullptr, 10);
+	if (vm.count("help")) {
+	    cout << desc << "\n";
+	    return 1;
 	}
 
-	if (itemsvar) {
-		items = std::strtol(itemsvar, nullptr, 10);
-	}
+	int items = vm["items"].as<int>();
+	int reps = vm["reps"].as<int>();
+	cout << "reps: " << reps << ", items:" << items << endl;
 
 	LineitemColumnar data(items);
 	generateDataColumns(&data);
@@ -274,10 +275,14 @@ int main(){
 		tpch_q1_columnar(&data, ans);
 	}
 
-	std::cout << "reps: " << reps << ", items:" << items << std::endl;
+	auto before = clk::now();
 	for (int i = 0; i < k_flags; ++i){
 		for (int j = 0; j < k_status; ++j){
-			std::cout << "l_linestatus: " << j << " l_returnflag: " << i << " " << ans[i][j] << std::endl;
+			cout << "l_linestatus: " << j << " l_returnflag: " << i << " " << ans[i][j] << endl;
 		}
 	}
+	auto after = clk::now();
+
+	cout << "time_millis:" <<  duration_millis(before, after) << endl;
+
 }

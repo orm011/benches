@@ -1,34 +1,31 @@
-#include <cstring>
-#include <string>
-#include <cstdlib>
-#include <cstdint>
-#include <iostream>
-#include <chrono>
+#include "common.h"
 
-using namespace std::chrono;
-using clk = high_resolution_clock;
+int main(int ac, char** av) {
+	po::options_description desc("Allowed options");
+	desc.add_options()
+		("help", "show this")
+	    ("sizemb", po::value<int>()->default_value(32), "size in mb")
+	    ("reps", po::value<int>()->default_value(1), "number of repetitions");
 
+	po::variables_map vm;
+	po::store(po::parse_command_line(ac, av, desc), vm);
+	po::notify(vm);
 
-int main() {
-	uint64_t byteslen = 1 << 25; // 32MB
-	uint64_t reps = 2;
-
-	if (auto b = getenv("BYTES")){
-		byteslen = std::strtol(b, NULL, 10);
+	if (vm.count("help")) {
+	    cout << desc << "\n";
+	    return 1;
 	}
 
-	if (auto r = getenv("REPS")){
-		reps = std::strtol(r, NULL, 10);
-	}
+	int sizemb = vm["sizemb"].as<int>();
+	int reps = vm["reps"].as<int>();
 
-
-	uint64_t * bytes = new uint64_t[byteslen/8];
+	int sizeb = sizemb*(1 << 20);
+	uint64_t * bytes = new uint64_t[sizeb/8];
 	auto startt = clk::now();
-	for  (uint64_t i = 0; i < reps; ++i) {
-		memset(bytes, i, byteslen);
+	for  (int i = 0; i < reps; ++i) {
+		memset(bytes, i, sizeb);
 	}
 	auto endt = clk::now();
 
-	auto dur = duration_cast<milliseconds>(endt - startt).count();
-	std::cout << "{byteslen:" << byteslen << ", reps:" << reps << ", duration_millis:" << dur << "}" << std::endl;
+	std::cout << "{size_mb:" << sizemb << ", reps:" << reps << ", duration_millis:" << duration_millis(startt, endt) << "}" << std::endl;
 }

@@ -27,7 +27,8 @@ int main(int ac, char** av) {
 	vector<thread> workers(threads);
 
 	for (auto i = 0; i < threads; ++i) {
-		arrs.push_back(new uint64_t[sizeb/8]);
+		auto mem = new uint64_t[sizeb/8];
+		arrs.push_back(mem);
 	}
 
 	auto run = [&](int thnum){
@@ -41,7 +42,7 @@ int main(int ac, char** av) {
 		workers.emplace_back(run, i);
 	}
 
-	for (auto i = 0; i < threads; ){
+	for (auto i = 0; i < threads; ++i){
 		workers[i].join();
 	}
 	auto endt = clk::now();

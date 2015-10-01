@@ -1,7 +1,12 @@
-ITEMS=100000
+CXXWARNS=-Wall -Wextra -Wno-unused-parameter -Werror -Wno-macro-redefined -Wno-char-subscripts
+CXXFLAGS=--std=c++14 -march=native -mtune=native -O3 -g $(CXXWARNS)
+CILKFLAGS=-I$(CILKPUB) -fcilkplus
 
 tpch: tpch.cc
-	$(CXX) -I$(CILKPUB)  --std=c++14 -march=native -mtune=native -Wall -Wextra -Wno-unused-parameter -Werror -fcilkplus -O3 -g -Wno-macro-redefined tpch.cc -DITEMS=$(ITEMS) -Wno-char-subscripts -o tpch
+	$(CXX) $(CXXFLAGS) $(CILKFLAGS) tpch.cc -o tpch
+
+mymemcpy: mymemcpy.cc
+	$(CXX) $(CXXLAGS) mymemcpy.cc -o mymemcpy
 
 clean:
-	rm -f *~ a.out tpch
+	rm -f *~ a.out tpch mymemcpy

@@ -6,7 +6,7 @@ tpch: tpch.cc
 	$(CXX) $(CXXFLAGS) $(CILKFLAGS) tpch.cc -o tpch
 
 mymemcpy: mymemcpy.cc
-	$(CXX) $(CXXLAGS) mymemcpy.cc -o mymemcpy
+	$(CXX) $(CXXFLAGS) mymemcpy.cc -o mymemcpy
 
 clean:
 	rm -f *~ a.out tpch mymemcpy

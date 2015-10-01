@@ -1,16 +1,22 @@
 #include <cstring>
 #include <string>
-#include <stdlib.h>
+#include <cstdlib>
+#include <cstdint>
 
 int main() {
-  char * byteslench = getenv("BYTES");
-  uint64_t byteslen = std::strtol(byteslench, NULL, 10);
-  uint64_t * bytes = new uint64_t[byteslen/8];
+	uint64_t byteslen = 1 << 25; // 32MB
+	uint64_t reps = 2;
 
-  char * repsch = getenv("REPS");
-  uint64_t reps = std::strtol(repsch, NULL, 10);
+	if (auto b = getenv("BYTES")){
+		byteslen = std::strtol(b, NULL, 10);
+	}
 
-  for  (uint64_t i = 0; i < reps; ++i){
-    memset(bytes, i, byteslen);
-  }
+	if (auto r = getenv("REPS")){
+		reps = std::strtol(r, NULL, 10);
+	}
+
+	uint64_t * bytes = new uint64_t[byteslen/8];
+	for  (uint64_t i = 0; i < reps; ++i) {
+		memset(bytes, i, byteslen);
+	}
 }

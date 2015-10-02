@@ -1,5 +1,6 @@
 #include <tuple>
 #include <cilkpub/dotmix.h>
+#include <cilkpub/sort.h>
 #include <ostream>
 #include "common.h"
 
@@ -212,7 +213,7 @@ void generateItem (LineitemColumnar *l, size_t i, cilkpub::DotMix &c){
 	  l->l_shipdate[i] =  MarsagliaXOR(&g_s) % (1 << 12);
 }
 
-void generateDataColumns(LineitemColumnar *l)
+void generateDataColumns(LineitemColumnar *l, bool sorted)
 {
   cilkpub::pedigree_scope scope = cilkpub::pedigree_scope::current();
   cilkpub::DotMix dprng(0xabc);
@@ -220,6 +221,10 @@ void generateDataColumns(LineitemColumnar *l)
 
   _Cilk_for ( size_t i = 0; i < l->len; i++ )  {
     generateItem(l, i, dprng);
+  }
+
+  if (sorted) {
+	  cilkpub::cilk_sort_in_place(l->l_shipdate, l->l_shipdate + l->len);
   }
 }
 
@@ -230,7 +235,8 @@ int main(int ac, char** av){
 		("help", "show this")
 	    ("items", po::value<int>()->default_value(1024), "items in lineitem")
 	    ("reps", po::value<int>()->default_value(1), "number of repetitions")
-		("selectivity", po::value<int>()->default_value(90), "from 1 to 100, percentage of tuples that qualify.");
+		("selectivity", po::value<int>()->default_value(90), "from 1 to 100, percentage of tuples that qualify.")
+		("sorted", po::value<bool>()->default_value(0), "0 or 1 to sort workload by shipdate");
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(ac, av, desc), vm);
@@ -244,11 +250,12 @@ int main(int ac, char** av){
 	int items = vm["items"].as<int>();
 	int reps = vm["reps"].as<int>();
 	int selectivity = vm["selectivity"].as<int>();
+	bool sorted = vm["sorted"].as<bool>();
 
 	cout << "reps: " << reps << ", items:" << items << endl;
 
 	LineitemColumnar data(items);
-	generateDataColumns(&data);
+	generateDataColumns(&data, sorted);
 	int cutoff = ((selectivity * (1 << 12))/ 100); // warning: careful with small values.
 
 	q1out ans[k_flags][k_status] {};

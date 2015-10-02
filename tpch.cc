@@ -270,13 +270,11 @@ int main(int ac, char** av){
 
 	q1out ans[k_flags][k_status] {};
 
+	auto before = clk::now();
 	for (int i = 0; i < reps; ++i) {
 		memset(ans, 0, sizeof(ans));
+		tpch_q1_columnar(&data, ans);
 	}
-
-	auto before = clk::now();
-
-	tpch_q1_columnar(&data, ans);
 
 	for (int i = 0; i < k_flags; ++i){
 		for (int j = 0; j < k_status; ++j){

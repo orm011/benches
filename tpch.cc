@@ -166,8 +166,6 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], i
 	int64_t acc_discounted[3][2] {};
 	int64_t acc_disctax[3][2] {};
 
-	const int k_date = date_of(1998, 1, 1); // 10% selectivity.
-
 	for (size_t i = 0; i < l->len; ++i) {
 		if (l->l_shipdate[i] <= cutoff) {
 			auto &flag = l->l_returnflag[i];
@@ -225,17 +223,6 @@ void generateDataColumns(LineitemColumnar *l)
   }
 }
 
-
-void generateDataRows(Lineitem *l, size_t len)
-{
-  cilkpub::pedigree_scope scope = cilkpub::pedigree_scope::current();
-  cilkpub::DotMix dprng(0xabc);
-  dprng.init_scope(scope);
-  
-  _Cilk_for ( size_t i = 0; i < len; i++ )  {
-    generateItem(l + i, dprng);
-  }
-}
 
 int main(int ac, char** av){
 	po::options_description desc("Allowed options");

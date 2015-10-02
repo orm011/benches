@@ -66,7 +66,7 @@ void bench_agg(const params &p){
 
 	for (auto i = 0; i < p.threads; ++i) {
 		arrs.push_back(new uint64_t[p.getSizeB()/8]);
-		workers.emplace_back(memset, arrs[i], 10, p.getSizeB());
+		workers.emplace_back(memset, arrs[i], 0xff, p.getSizeB());
 	}
 
 	for (auto i = 0; i < p.threads; ++i) {
@@ -74,20 +74,22 @@ void bench_agg(const params &p){
 	}
 
 	workers.clear();
-	auto agg = [&](int thnum){
+	auto agg = [&](int thnum, int *out){
 		int aggregate = 0;
-		for (int i = 0; i < p.reps; ++ i){
+		for (int i = 0; i < p.reps; ++i){
 			for (size_t pos =0; pos < p.getSizeB()/8; ++pos){
 				aggregate ^= arrs[thnum][pos];
 			}
 		}
 
-		return aggregate;
+		*out = aggregate;
 	};
 
 	auto startt = clk::now(); // over-write
+	int *ans = new int[p.threads];
+
 	for (auto i = 0; i < p.threads; ++i){
-		workers.emplace_back(agg, i);
+		workers.emplace_back(agg, i, &ans[i]);
 	}
 	auto forkt = clk::now();
 

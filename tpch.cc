@@ -275,13 +275,13 @@ int main(int ac, char** av){
 		memset(ans, 0, sizeof(ans));
 		tpch_q1_columnar(&data, ans);
 	}
+	auto after = clk::now();
 
 	for (int i = 0; i < k_flags; ++i){
 		for (int j = 0; j < k_status; ++j){
 			cerr << "l_linestatus: " << j << " l_returnflag: " << i << " " << ans[i][j] << endl;
 		}
 	}
-	auto after = clk::now();
 
 	output_param_names(vm);
 	cout << "time_millis" << endl;

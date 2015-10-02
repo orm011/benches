@@ -247,8 +247,8 @@ int main(int ac, char** av){
 	    ("items", po::value<int>()->default_value(1024), "items in lineitem")
 	    ("reps", po::value<int>()->default_value(1), "number of repetitions")
 		("selectivity", po::value<int>()->default_value(90), "from 1 to 100, percentage of tuples that qualify.")
-		("sorted", po::value<bool>()->default_value(0), "0 or 1 to sort workload by shipdate")
-		("mult", po::value<bool>()->default_value(1), "use multiplication, otherwise replace with xor");
+		("sorted", po::value<int>()->default_value(0), "0 to leave data in position, or 1 to sort workload by shipdate")
+		("mult", po::value<int>()->default_value(1), "1 to use multiplication, 0 replace with xor");
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(ac, av, desc), vm);
@@ -262,8 +262,8 @@ int main(int ac, char** av){
 	int items = vm["items"].as<int>();
 	int reps = vm["reps"].as<int>();
 	int selectivity = vm["selectivity"].as<int>();
-	bool sorted = vm["sorted"].as<bool>();
-	bool mult = vm["mult"].as<bool>();
+	bool sorted = vm["sorted"].as<int>();
+	bool mult = vm["mult"].as<int>();
 
 	cout << "reps: " << reps << ", items:" << items << endl;
 

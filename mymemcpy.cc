@@ -7,8 +7,10 @@
 enum struct Task {
 	MEMAGG,
 	LIBCMEMSET,
-	NAIVEMEMSET
+	NAIVEMEMSET,
+	STREAMMEMSET
 };
+
 
 struct params {
 	int sizemb;
@@ -38,7 +40,16 @@ void bench_memset(const params &p) {
 		arrs.push_back(new long long[p.getSizeB()/8]);
 	}
 
-	auto manual_var = [&](int thnum){
+	auto naive_var = [&](int thnum){
+		for  (int i = 0; i < p.reps; ++i) {
+			for (size_t pos = 0; pos < p.getSizeB()/8; ++pos) {
+				arrs[thnum][pos] = p;
+			}
+		}
+	};
+
+
+	auto stream64_var = [&](int thnum){
 		for  (int i = 0; i < p.reps; ++i) {
 			for (size_t pos = 0; pos < p.getSizeB()/8; ++pos) {
 				long long  * p = &arrs[thnum][pos];
@@ -47,16 +58,18 @@ void bench_memset(const params &p) {
 		}
 	};
 
-	auto libc_memset= [&](int thnum) {
+	auto libc_var = [&](int thnum) {
 		for  (int i = 0; i < p.reps; ++i) {
 			memset(arrs[thnum], i, p.getSizeB());
 		}
 	};
 
-	function<void(int)> variant = libc_memset;
+	function<void(int)> variant = libc_var;
 
 	if (p.task == Task::NAIVEMEMSET) {
-		variant = manual_var;
+		variant = naive_var;
+	} else if (p.task == Task::STREAMMEMSET){
+		variant = stream64_var;
 	}
 
 	auto startt = clk::now();
@@ -131,15 +144,17 @@ int main(int ac, char** av) {
 		("threads", po::value<int>()->default_value(1), "number of threads")
 		("task", po::value<string>()->default_value("memagg"), "naivememset,libcmemset,memagg");
 
+	const unordered_map<string, Task> dict {
+		{"naivememset", Task::NAIVEMEMSET},
+		{"libcmemset", Task::LIBCMEMSET},
+		{"streammemset", Task::STREAMMEMSET},
+		{"memagg", Task::MEMAGG}
+	};
+
 	po::variables_map vm;
 	po::store(po::parse_command_line(ac, av, desc), vm);
 	po::notify(vm);
 
-	unordered_map<string, Task> dict {
-		{"naivememset", Task::NAIVEMEMSET},
-		{"libcmemset", Task::LIBCMEMSET},
-		{"memagg", Task::MEMAGG}
-	};
 
 	if (vm.count("help")) {
 	    cout << desc << "\n";
@@ -157,5 +172,7 @@ int main(int ac, char** av) {
 		bench_memset(p);
 	} else if (p.task == Task::MEMAGG) {
 		bench_agg(p);
+	} else {
+		cout << "unknown task";
 	}
 }

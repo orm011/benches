@@ -2,6 +2,7 @@
 #include <vector>
 #include <functional>
 #include <unordered_map>
+#include "emmintrin.h"
 
 enum struct Task {
 	MEMAGG,
@@ -31,16 +32,17 @@ struct params {
 
 void bench_memset(const params &p) {
 	vector<thread> workers;
-	vector<uint64_t*> arrs;
+	vector<long long *> arrs;
 
 	for (auto i = 0; i < p.threads; ++i) {
-		arrs.push_back(new uint64_t[p.getSizeB()/8]);
+		arrs.push_back(new long long[p.getSizeB()/8]);
 	}
 
 	auto manual_var = [&](int thnum){
 		for  (int i = 0; i < p.reps; ++i) {
 			for (size_t pos = 0; pos < p.getSizeB()/8; ++pos) {
-				arrs[thnum][pos] = i;
+				long long  * p = &arrs[thnum][pos];
+				_mm_stream_si64 (p, (long long)i);
 			}
 		}
 	};

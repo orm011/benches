@@ -278,11 +278,14 @@ int main(int ac, char** av){
 	auto before = clk::now();
 	for (int i = 0; i < k_flags; ++i){
 		for (int j = 0; j < k_status; ++j){
-			cout << "l_linestatus: " << j << " l_returnflag: " << i << " " << ans[i][j] << endl;
+			cerr << "l_linestatus: " << j << " l_returnflag: " << i << " " << ans[i][j] << endl;
 		}
 	}
 	auto after = clk::now();
 
-	cout << "time_millis:" <<  duration_millis(before, after) << endl;
+	output_param_names(vm);
+	cout << ",time_millis" << endl;
 
+	output_param_values(vm);
+	cout <<  duration_millis(before, after) << endl;
 }

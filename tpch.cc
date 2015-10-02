@@ -244,11 +244,13 @@ int main(int ac, char** av){
 	po::options_description desc("Allowed options");
 	desc.add_options()
 		("help", "show this")
+		("threads", po::value<int>()->default_value(1), "number of threads")
 	    ("items", po::value<int>()->default_value(1024), "items in lineitem")
 	    ("reps", po::value<int>()->default_value(1), "number of repetitions")
 		("selectivity", po::value<int>()->default_value(90), "from 1 to 100, percentage of tuples that qualify.")
 		("sorted", po::value<int>()->default_value(0), "0 to leave data in position, or 1 to sort workload by shipdate")
-		("mult", po::value<int>()->default_value(1), "1 to use multiplication, 0 replace with xor");
+		("mult", po::value<int>()->default_value(1), "1 to use multiplication, 0 replace with xor")
+		("results", po::value<int>()->default_value(0), "0 hides results, 1 shows them");
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(ac, av, desc), vm);
@@ -264,8 +266,8 @@ int main(int ac, char** av){
 	int selectivity = vm["selectivity"].as<int>();
 	bool sorted = vm["sorted"].as<int>();
 	bool mult = vm["mult"].as<int>();
-
-	cout << "reps: " << reps << ", items:" << items << endl;
+	int threads = vm["threads"].as<int>();
+	int results = vm["results"].as<int>();
 
 	LineitemColumnar data(items);
 	generateDataColumns(&data, sorted);
@@ -280,15 +282,16 @@ int main(int ac, char** av){
 	}
 	auto after = clk::now();
 
-	for (int i = 0; i < k_flags; ++i) {
-		for (int j = 0; j < k_status; ++j) {
-			cerr << "l_linestatus: " << j << " l_returnflag: " << i << " " << ans[i][j] << endl;
+	if (results){
+		for (int i = 0; i < k_flags; ++i) {
+			for (int j = 0; j < k_status; ++j) {
+				cerr << "l_linestatus: " << j << " l_returnflag: " << i << " " << ans[i][j] << endl;
+			}
 		}
 	}
 
 	output_param_names(vm);
 	cout << "time_millis" << endl;
-
 	output_param_values(vm);
 	cout <<  duration_millis(before, after) << endl;
 }

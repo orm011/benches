@@ -160,7 +160,7 @@ struct LineitemColumnar {
 	char *l_linestatus;
 };
 
-void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff){
+void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff, bool mult){
 	int64_t acc_counts[k_flags][k_status] {};
 	int64_t acc_quantity[3][2] {};
 	int64_t acc_baseprice[3][2] {};
@@ -176,10 +176,21 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], i
 			acc_quantity[flag][status] += l->l_quantity[i];
 			acc_baseprice[flag][status] += l->l_extendedprice[i];
 
-			int discounted = (l->l_extendedprice[i] * (100 - l->l_discount[i]))/100;
+			int discounted;
+			if (mult){
+				discounted = (l->l_extendedprice[i] * (100 - l->l_discount[i]))/100;
+			} else {
+				discounted = (l->l_extendedprice[i] ^ (l->l_discount[i]));
+			}
 			acc_discounted[flag][status] += discounted;
 
-			int taxed = (discounted * (100 + l->l_tax[i]))/100;
+			int taxed;
+			if (mult){
+				taxed = (discounted * (100 + l->l_tax[i]))/100;
+			} else {
+				taxed = (l->l_extendedprice[i] ^ (l->l_discount[i]));
+			}
+
 			acc_disctax[flag][status] += taxed;
 		}
 	}
@@ -236,7 +247,8 @@ int main(int ac, char** av){
 	    ("items", po::value<int>()->default_value(1024), "items in lineitem")
 	    ("reps", po::value<int>()->default_value(1), "number of repetitions")
 		("selectivity", po::value<int>()->default_value(90), "from 1 to 100, percentage of tuples that qualify.")
-		("sorted", po::value<bool>()->default_value(0), "0 or 1 to sort workload by shipdate");
+		("sorted", po::value<bool>()->default_value(0), "0 or 1 to sort workload by shipdate")
+		("mult", po::value<bool>()->default_value(1), "use multiplication, otherwise replace with xor");
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(ac, av, desc), vm);
@@ -251,6 +263,7 @@ int main(int ac, char** av){
 	int reps = vm["reps"].as<int>();
 	int selectivity = vm["selectivity"].as<int>();
 	bool sorted = vm["sorted"].as<bool>();
+	bool mult = vm["mult"].as<bool>();
 
 	cout << "reps: " << reps << ", items:" << items << endl;
 
@@ -263,7 +276,7 @@ int main(int ac, char** av){
 	auto before = clk::now();
 	for (int i = 0; i < reps; ++i) {
 		memset(ans, 0, sizeof(ans));
-		tpch_q1_columnar(&data, ans, cutoff);
+		tpch_q1_columnar(&data, ans, cutoff, mult);
 	}
 	auto after = clk::now();
 

@@ -127,8 +127,10 @@ baseline: read the data once
  * -struct of arrays vs array of structs.
  * -intermediate hash table.
  */
-int date_of(int yr, int month, int day){
-	return yr; // todo: fix. vary.;
+short date_of(int yr, int month, int day){
+	return (yr << 9) + (month << 5) + day ; // todo: fix. vary.;
+	/* first 3 bits yr, then 4 bits month, then 5 bits day */
+	/* 1/128 is 2^12/2^7 = 2^5 = 32. so pct. x% -> ((x * 32) / 100) << 7*/
 }
 
 static const int k_flags = 3;
@@ -137,26 +139,27 @@ static const int k_status = 2;
 struct LineitemColumnar {
 
 	LineitemColumnar(size_t len) : len(len) {
-		l_quantity = new int[len];
-		l_shipdate = new int[len];
-		l_extendedprice = new int[len];
-		l_discount = new char[len]; /*0 to 100.*/
-		l_tax = new char[len]; /*0 to 100*/
+		l_shipdate = new uint16_t[len];
+		l_quantity = new int16_t[len];
+		l_extendedprice = new int32_t[len];
+		l_discount = new uint16_t[len]; /*0.00 to 100.00*/
+		l_tax = new uint16_t[len]; /*0.00 to 100.00*/
 		l_returnflag = new char[len]; /* 2 values*/
 		l_linestatus = new char[len]; /* 3 values*/
 	}
 
 	size_t len;
-	int *l_quantity;
-	int *l_extendedprice;
-	char *l_discount;
-	char *l_tax;
+
+	uint16_t *l_shipdate; //where
+	int16_t *l_quantity;
+	int32_t *l_extendedprice;
+	uint16_t *l_discount;
+	uint16_t *l_tax;
 	char *l_returnflag;
 	char *l_linestatus;
-	int *l_shipdate; //where
 };
 
-void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status]){
+void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff){
 	int64_t acc_counts[k_flags][k_status] {};
 	int64_t acc_quantity[3][2] {};
 	int64_t acc_baseprice[3][2] {};
@@ -166,7 +169,7 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status]){
 	const int k_date = date_of(1998, 1, 1); // 10% selectivity.
 
 	for (size_t i = 0; i < l->len; ++i) {
-		if (l->l_shipdate[i] <= k_date) {
+		if (l->l_shipdate[i] <= cutoff) {
 			auto &flag = l->l_returnflag[i];
 			auto &status = l->l_linestatus[i];
 
@@ -198,17 +201,6 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status]){
 	}
 }
 
-void generateItem (Lineitem *l, cilkpub::DotMix &c) {
-  uint64_t v = c.get();
-  int g_s = v;
-  l->l_quantity = MarsagliaXOR(&g_s) % 100;
-  l->l_extendedprice = MarsagliaXOR(&g_s) % 1000 + 100;
-  l->l_discount = MarsagliaXOR(&g_s) % 40 + 1;
-  l->l_tax = MarsagliaXOR(&g_s) % 10 + 1;
-  l->l_returnflag = MarsagliaXOR(&g_s) % 3;
-  l->l_linestatus = MarsagliaXOR(&g_s) % 2;
-  l->l_shipdate = date_of(1990 + (MarsagliaXOR(&g_s) % 10), 0, 0);
-}
 
 void generateItem (LineitemColumnar *l, size_t i, cilkpub::DotMix &c){
 	  uint64_t v = c.get();
@@ -219,7 +211,7 @@ void generateItem (LineitemColumnar *l, size_t i, cilkpub::DotMix &c){
 	  l->l_tax[i] = MarsagliaXOR(&g_s) % 10 + 1;
 	  l->l_returnflag[i] = MarsagliaXOR(&g_s) % 3;
 	  l->l_linestatus[i] = MarsagliaXOR(&g_s) % 2;
-	  l->l_shipdate[i] = date_of(1990 + (MarsagliaXOR(&g_s) % 10), 0, 0);
+	  l->l_shipdate[i] =  MarsagliaXOR(&g_s) % (1 << 12);
 }
 
 void generateDataColumns(LineitemColumnar *l)
@@ -250,7 +242,8 @@ int main(int ac, char** av){
 	desc.add_options()
 		("help", "show this")
 	    ("items", po::value<int>()->default_value(1024), "items in lineitem")
-	    ("reps", po::value<int>()->default_value(1), "number of repetitions");
+	    ("reps", po::value<int>()->default_value(1), "number of repetitions")
+		("selectivity", po::value<int>()->default_value(90), "from 1 to 100, percentage of tuples that qualify.");
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(ac, av, desc), vm);
@@ -263,22 +256,25 @@ int main(int ac, char** av){
 
 	int items = vm["items"].as<int>();
 	int reps = vm["reps"].as<int>();
+	int selectivity = vm["selectivity"].as<int>();
+
 	cout << "reps: " << reps << ", items:" << items << endl;
 
 	LineitemColumnar data(items);
 	generateDataColumns(&data);
+	int cutoff = ((selectivity * 32)/ 100) << 7; // best case: 32 << 7 = 1 << 12. -> everyone.
 
 	q1out ans[k_flags][k_status] {};
 
 	auto before = clk::now();
 	for (int i = 0; i < reps; ++i) {
 		memset(ans, 0, sizeof(ans));
-		tpch_q1_columnar(&data, ans);
+		tpch_q1_columnar(&data, ans, cutoff);
 	}
 	auto after = clk::now();
 
-	for (int i = 0; i < k_flags; ++i){
-		for (int j = 0; j < k_status; ++j){
+	for (int i = 0; i < k_flags; ++i) {
+		for (int j = 0; j < k_status; ++j) {
 			cerr << "l_linestatus: " << j << " l_returnflag: " << i << " " << ans[i][j] << endl;
 		}
 	}

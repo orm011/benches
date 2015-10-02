@@ -249,7 +249,7 @@ int main(int ac, char** av){
 
 	LineitemColumnar data(items);
 	generateDataColumns(&data);
-	int cutoff = ((selectivity * 32)/ 100) << 7; // best case: 32 << 7 = 1 << 12. -> everyone.
+	int cutoff = ((selectivity * (1 << 12))/ 100); // warning: careful with small values.
 
 	q1out ans[k_flags][k_status] {};
 

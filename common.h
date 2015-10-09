@@ -17,6 +17,8 @@
 #include <cassert>
 #include <boost/program_options.hpp>
 #include <thread>
+#include <utility>
+#include <unordered_map>
 
 using namespace std;
 using namespace chrono;
@@ -28,28 +30,53 @@ inline int duration_millis(auto before, auto after){
 }
 
 
-inline void output_param_names(const po::variables_map &vm){
-	for (const auto &p: vm) {
-		cout << p.first << ",";
-	}
+string to_string(const po::variable_value &v) {
+	try {
+		return v.as<string>();
+	} catch (exception &e) { try {
+		return std::to_string(v.as<int>());
+	} catch (exception &e){ try {
+		return std::to_string(v.as<bool>());
+	} catch (exception &e) {
+		return string("");
+	}}}
 }
 
-inline void output_param_values(const po::variables_map &vm){
-	for (const auto &p: vm) {
-		try {
-			cout << p.second.as<string>() << ",";
-		} catch (exception &e) {
-			try {
-				cout << p.second.as<int>() << ",";
-			} catch (exception &e){
-				try {
-					cout << p.second.as<bool>() << ",";
-				} catch (exception &e) {
-					throw e;
-				}
-			}
+#define ADD(bo, x) (bo).set_variable(#x, (x))
+
+class BenchmarkOutput {
+
+public:
+	BenchmarkOutput(){ }
+
+	BenchmarkOutput(const po::variables_map &vm){
+		for (const auto &p: vm) {
+			pairs[p.first] = to_string(p.second);
 		}
 	}
-}
+
+	template <typename T> void set_variable(const std::string & a, const T &b) {
+		pairs[a] = to_string(b);
+	}
+
+	void display_param_names(const std::string & delimiter = ",") const {
+		for (auto & p : pairs) {
+			cout << p.first << delimiter;
+		}
+		 cout << endl;
+	}
+
+	void display_param_values(const std::string &delimiter = ",") const {
+		for (auto & p : pairs){
+			cout << p.second << delimiter;
+		}
+
+		cout << endl;
+	}
+
+private:
+	unordered_map<string,string> pairs {};
+};
+
 
 #endif /* COMMON_H_ */

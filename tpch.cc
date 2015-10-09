@@ -137,27 +137,35 @@ short date_of(int yr, int month, int day){
 static const int k_flags = 3;
 static const int k_status = 2;
 
+template <typename T> T* allocate(size_t len, size_t byte_alignment = 0) {
+	return (new T[len]); // 0 is self-aligned
+}
+
 struct LineitemColumnar {
+	LineitemColumnar() = default;
 
 	LineitemColumnar(size_t len) : len(len) {
-		l_shipdate = new uint16_t[len];
-		l_quantity = new int16_t[len];
-		l_extendedprice = new int32_t[len];
-		l_discount = new uint16_t[len]; /*0.00 to 100.00*/
-		l_tax = new uint16_t[len]; /*0.00 to 100.00*/
-		l_returnflag = new char[len]; /* 2 values*/
-		l_linestatus = new char[len]; /* 3 values*/
+		l_shipdate = allocate<uint16_t>(len);
+		l_quantity = allocate<int16_t>(len);
+		l_extendedprice = allocate<int32_t>(len);
+		l_discount = allocate<uint16_t>(len); /*0.00 to 100.00*/
+		l_tax = allocate<uint16_t>(len); /*0.00 to 100.00*/
+		l_returnflag = allocate<char>(len); /* 2 values*/
+		l_linestatus = allocate<char>(len); /* 3 values*/
 	}
 
-	size_t len;
+	char _pad1[64] {};
+	size_t len {};
 
-	uint16_t *l_shipdate; //where
-	int16_t *l_quantity;
-	int32_t *l_extendedprice;
-	uint16_t *l_discount;
-	uint16_t *l_tax;
-	char *l_returnflag;
-	char *l_linestatus;
+	uint16_t *l_shipdate {}; //where
+	int16_t *l_quantity {};
+	int32_t *l_extendedprice {};
+	uint16_t *l_discount {};
+	uint16_t *l_tax {};
+	char *l_returnflag {};
+	char *l_linestatus {};
+
+	char _pad2[64] {};
 };
 
 void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff, bool mult){
@@ -211,43 +219,61 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], i
 	}
 }
 
+struct TaskData {
+	LineitemColumnar data {};
+	q1out ans[k_flags][k_status] {};
+	thread t {};
+	char pad[64] {};
+};
 
-void generateItem (LineitemColumnar *l, size_t i, cilkpub::DotMix &c){
-	  uint64_t v = c.get();
-	  int g_s = v;
-	  l->l_quantity[i] = MarsagliaXOR(&g_s) % 100;
-	  l->l_extendedprice[i] = MarsagliaXOR(&g_s) % 1000 + 100;
-	  l->l_discount[i] = MarsagliaXOR(&g_s) % 40 + 1;
-	  l->l_tax[i] = MarsagliaXOR(&g_s) % 10 + 1;
-	  l->l_returnflag[i] = MarsagliaXOR(&g_s) % 3;
-	  l->l_linestatus[i] = MarsagliaXOR(&g_s) % 2;
-	  l->l_shipdate[i] =  MarsagliaXOR(&g_s) % (1 << 12);
+
+/**
+ * not for NUMA.
+ */
+void generateData (const vector<TaskData>  &l, bool sorted) {
+	cilkpub::pedigree_scope scope = cilkpub::pedigree_scope::current();
+	cilkpub::DotMix c(0xabc);
+	c.init_scope(scope);
+
+	int len = l[0].data.len;
+
+	_Cilk_for (size_t vec = 0; vec < l.size(); ++vec) {
+		_Cilk_for (int item = 0; item < len; ++item) {
+			int s = c.get();
+			l[vec].data.l_quantity[item] = MarsagliaXOR(&s) % 100;
+			l[vec].data.l_extendedprice[item] = MarsagliaXOR(&s) % 1000 + 100;
+			l[vec].data.l_discount[item] = MarsagliaXOR(&s) % 40 + 1;
+			l[vec].data.l_tax[item] = MarsagliaXOR(&s) % 10 + 1;
+			l[vec].data.l_returnflag[item] = MarsagliaXOR(&s) % 3;
+			l[vec].data.l_linestatus[item] = MarsagliaXOR(&s) % 2;
+			l[vec].data.l_shipdate[item] =  MarsagliaXOR(&s) % (1 << 12);
+	  }
+
+	  if (sorted) {
+		  cilkpub::cilk_sort_in_place(l[vec].data.l_shipdate, l[vec].data.l_shipdate + l[vec].data.len);
+	  }
+	}
 }
 
-void generateDataColumns(LineitemColumnar *l, bool sorted)
-{
-  cilkpub::pedigree_scope scope = cilkpub::pedigree_scope::current();
-  cilkpub::DotMix dprng(0xabc);
-  dprng.init_scope(scope);
 
-  _Cilk_for ( size_t i = 0; i < l->len; i++ )  {
-    generateItem(l, i, dprng);
-  }
-
-  if (sorted) {
-	  cilkpub::cilk_sort_in_place(l->l_shipdate, l->l_shipdate + l->len);
-  }
+void runBench(TaskData *w, int reps, uint16_t cutoff, bool mult) {
+	for (int i = 0; i < reps; ++i) {
+		memset(&w->ans, 0, sizeof(w->ans));
+		tpch_q1_columnar(&w->data, w->ans, cutoff, mult);
+	}
 }
-
 
 int main(int ac, char** av){
 	po::options_description desc("Allowed options");
+	vector<int> selectivities  {90};
+	vector<int> threadlevels {1,2};
+
 	desc.add_options()
 		("help", "show this")
-		("threads", po::value<int>()->default_value(1), "number of threads")
+		("threadlevels", po::value<vector<int>>()->multitoken()->default_value(threadlevels, "1, 2"), "different numbers of threads to try")
 	    ("items", po::value<int>()->default_value(1024), "items in lineitem")
 	    ("reps", po::value<int>()->default_value(1), "number of repetitions")
-		("selectivity", po::value<int>()->default_value(90), "from 1 to 100, percentage of tuples that qualify.")
+		("selectivities", po::value<vector<int>>()->multitoken()->default_value(selectivities, "10, 90"), "from 1 to 100, percentage of tuples that qualify.")
 		("sorted", po::value<int>()->default_value(0), "0 to leave data in position, or 1 to sort workload by shipdate")
 		("mult", po::value<int>()->default_value(1), "1 to use multiplication, 0 replace with xor")
 		("results", po::value<int>()->default_value(0), "0 hides results, 1 shows them");
@@ -263,35 +289,58 @@ int main(int ac, char** av){
 
 	int items = vm["items"].as<int>();
 	int reps = vm["reps"].as<int>();
-	int selectivity = vm["selectivity"].as<int>();
+	selectivities = vm["selectivities"].as<vector<int>>();
+	vm.erase("selectivities");
+	threadlevels = vm["threadlevels"].as<vector<int>>();
+	assert(threadlevels.size() > 0);
+	std::sort(threadlevels.begin(), threadlevels.end());
+	vm.erase("threadlevels");
+
 	bool sorted = vm["sorted"].as<int>();
 	bool mult = vm["mult"].as<int>();
-	int threads = vm["threads"].as<int>();
 	int results = vm["results"].as<int>();
 
-	LineitemColumnar data(items);
-	generateDataColumns(&data, sorted);
-	int cutoff = ((selectivity * (1 << 12))/ 100); // warning: careful with small values.
-
-	q1out ans[k_flags][k_status] {};
-
-	auto before = clk::now();
-	for (int i = 0; i < reps; ++i) {
-		memset(ans, 0, sizeof(ans));
-		tpch_q1_columnar(&data, ans, cutoff, mult);
+	vector<TaskData> task_data(threadlevels.back());
+	for (int i = 0; i < threadlevels.back(); ++i) {
+		task_data[i].data = LineitemColumnar(items);
 	}
-	auto after = clk::now();
 
-	if (results){
-		for (int i = 0; i < k_flags; ++i) {
-			for (int j = 0; j < k_status; ++j) {
-				cerr << "l_linestatus: " << j << " l_returnflag: " << i << " " << ans[i][j] << endl;
+	generateData(task_data, sorted);
+	BenchmarkOutput bo(vm);
+
+	bool first = true;
+	for (auto selectivity : selectivities) {
+		int cutoff = ((selectivity * (1 << 12))/ 100); // warning: careful with small values.
+
+		for (auto threads : threadlevels) {
+
+			auto before = clk::now();
+			for (auto & w : task_data){ w.t = thread(runBench, &w, reps, cutoff, mult); }
+			auto between = clk::now();
+			for (auto & w : task_data) { w.t.join(); }
+			auto after = clk::now();
+
+			if (results) {
+				for (int i = 0; i < k_flags; ++i) {
+					for (int j = 0; j < k_status; ++j) {
+						cerr << "l_linestatus: " << j << " l_returnflag: " << i << " " << task_data[0].ans[i][j] << endl;
+					}
+				}
 			}
+
+			ADD(bo, selectivity);
+			ADD(bo, threads);
+
+			auto time_millis = duration_millis(before, after);
+			ADD(bo, time_millis);
+
+			auto setup_millis = duration_millis(before, between);
+			ADD(bo, setup_millis);
+
+			if (first) { bo.display_param_names(); }
+			first = false;
+
+			bo.display_param_values();
 		}
 	}
-
-	output_param_names(vm);
-	cout << "time_millis" << endl;
-	output_param_values(vm);
-	cout <<  duration_millis(before, after) << endl;
 }

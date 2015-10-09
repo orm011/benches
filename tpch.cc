@@ -141,6 +141,11 @@ template <typename T> T* allocate(size_t len, size_t byte_alignment = 0) {
 	return (new T[len]); // 0 is self-aligned
 }
 
+struct word {
+	int64_t _pad[8];
+};
+
+
 struct LineitemColumnar {
 	LineitemColumnar() = default;
 
@@ -154,9 +159,8 @@ struct LineitemColumnar {
 		l_linestatus = allocate<char>(len); /* 3 values*/
 	}
 
-	char _pad1[64] {};
+	word w1 {};
 	size_t len {};
-
 	uint16_t *l_shipdate {}; //where
 	int16_t *l_quantity {};
 	int32_t *l_extendedprice {};
@@ -164,11 +168,37 @@ struct LineitemColumnar {
 	uint16_t *l_tax {};
 	char *l_returnflag {};
 	char *l_linestatus {};
-
-	char _pad2[64] {};
+	word w2 {};
 };
 
-void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff, bool mult){
+const size_t k_unroll = 8;
+void tpch_q1_baseline(const word *l, size_t len,  int64_t *out) {
+	char sum[k_unroll] {};
+
+	for (size_t i = 0; i < len; i += k_unroll ) {
+		sum[0] ^= l[i+0]._pad[0];
+		sum[1] ^= l[i+1]._pad[0];
+		sum[2] ^= l[i+2]._pad[0];
+		sum[3] ^= l[i+3]._pad[0];
+		sum[4] ^= l[i+4]._pad[0];
+		sum[5] ^= l[i+5]._pad[0];
+		sum[6] ^= l[i+6]._pad[0];
+		sum[7] ^= l[i+7]._pad[0];
+	}
+
+	/**
+	 * op intensity:
+	 * one comparison, one increment, 8 xor -> 10 intop / 8*64 bytes = 1 op/ 60 bytes
+	 */
+	for (size_t i = 0; i < k_unroll; ++i ) {
+		*out ^= sum[i];
+	}
+}
+
+
+void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff, bool mult)
+{
+
 	int64_t acc_counts[k_flags][k_status] {};
 	int64_t acc_quantity[k_flags][k_status] {};
 	int64_t acc_baseprice[k_flags][k_status] {};
@@ -180,7 +210,6 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], i
 	int64_t acc2_baseprice[k_flags][k_status] {};
 	int64_t acc2_discounted[k_flags][k_status] {};
 	int64_t acc2_disctax[k_flags][k_status] {};
-
 
 	for ( size_t i = 0; i < l->len; i+=2 ) {
 		if (l->l_shipdate[i] <= cutoff) {
@@ -266,11 +295,28 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], i
 }
 
 struct TaskData {
+	word * baseline;
 	LineitemColumnar data {};
 	q1out ans[k_flags][k_status] {};
 	thread t {};
 	char pad[64] {};
 };
+
+
+void generateWords (word ** l, size_t copies, size_t len) {
+	cilkpub::pedigree_scope scope = cilkpub::pedigree_scope::current();
+	cilkpub::DotMix c(0xabc);
+	c.init_scope(scope);
+
+	_Cilk_for (size_t vec = 0; vec < copies; ++vec) {
+		_Cilk_for (size_t item = 0; item < len; ++item) {
+			int s = c.get();
+			for (int i = 0; i < 8; ++i) {
+				l[vec][item]._pad[i] = MarsagliaXOR(&s);
+			}
+		}
+	}
+}
 
 
 /**
@@ -293,12 +339,22 @@ void generateData (const vector<TaskData>  &l, bool sorted) {
 			l[vec].data.l_returnflag[item] = MarsagliaXOR(&s) % 3;
 			l[vec].data.l_linestatus[item] = MarsagliaXOR(&s) % 2;
 			l[vec].data.l_shipdate[item] =  MarsagliaXOR(&s) % (1 << 12);
-	  }
+		}
 
 	  if (sorted) {
 		  cilkpub::cilk_sort_in_place(l[vec].data.l_shipdate, l[vec].data.l_shipdate + l[vec].data.len);
 	  }
 	}
+}
+
+int64_t runBaseline(const word *l, size_t len, int reps) {
+	int64_t out = 0;
+
+	for (int i = 0; i < reps; ++i) {
+		tpch_q1_baseline(l, len, &out);
+	}
+
+	return out;
 }
 
 
@@ -320,9 +376,10 @@ int main(int ac, char** av){
 	    ("items", po::value<int>()->default_value(1024), "items in lineitem")
 	    ("reps", po::value<int>()->default_value(1), "number of repetitions")
 		("selectivities", po::value<vector<int>>()->multitoken()->default_value(selectivities, "10, 90"), "from 1 to 100, percentage of tuples that qualify.")
-		("sorted", po::value<int>()->default_value(0), "0 to leave data in position, or 1 to sort workload by shipdate")
-		("mult", po::value<int>()->default_value(1), "1 to use multiplication, 0 replace with xor")
-		("results", po::value<int>()->default_value(0), "0 hides results, 1 shows them");
+		("sorted", po::value<bool>()->default_value(true), "0 to leave data in position, or 1 to sort workload by shipdate")
+		("mult", po::value<bool>()->default_value(true), "1 to use multiplication, 0 replace with xor")
+		("results", po::value<bool>()->default_value(false), "0 hides results, 1 shows them")
+		("baseline", po::value<bool>()->default_value(false), "run the memory read baseline instead. most other options are meaningless");
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(ac, av, desc), vm);
@@ -342,9 +399,10 @@ int main(int ac, char** av){
 	std::sort(threadlevels.begin(), threadlevels.end());
 	vm.erase("threadlevels");
 
-	bool sorted = vm["sorted"].as<int>();
-	bool mult = vm["mult"].as<int>();
-	int results = vm["results"].as<int>();
+	bool sorted = vm["sorted"].as<bool>();
+	bool mult = vm["mult"].as<bool>();
+	bool results = vm["results"].as<bool>();
+	bool baseline = vm["baseline"].as<bool>();
 
 	vector<TaskData> task_data(threadlevels.back());
 	for (int i = 0; i < threadlevels.back(); ++i) {
@@ -361,8 +419,17 @@ int main(int ac, char** av){
 		for (auto threads : threadlevels) {
 
 			auto before = clk::now();
-			for (auto & w : task_data){ w.t = thread(runBench, &w, reps, cutoff, mult); }
+
+			if (!baseline) {
+				for (auto & w : task_data){ w.t = thread(runBench, &w, reps, cutoff, mult); }
+			} else {
+				for (auto & w : task_data) {
+					w.baseline = new word[items];
+					w.t = thread(runBaseline, w.baseline, items, reps);
+				}
+			}
 			auto between = clk::now();
+
 			for (auto & w : task_data) { w.t.join(); }
 			auto after = clk::now();
 

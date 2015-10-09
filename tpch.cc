@@ -303,16 +303,16 @@ struct TaskData {
 };
 
 
-void generateWords (word ** l, size_t copies, size_t len) {
+void generateWords (const vector<TaskData>  &lword, size_t len) {
 	cilkpub::pedigree_scope scope = cilkpub::pedigree_scope::current();
 	cilkpub::DotMix c(0xabc);
 	c.init_scope(scope);
 
-	_Cilk_for (size_t vec = 0; vec < copies; ++vec) {
+	_Cilk_for (size_t vec = 0; vec < lword.size(); ++vec) {
 		_Cilk_for (size_t item = 0; item < len; ++item) {
 			int s = c.get();
 			for (int i = 0; i < 8; ++i) {
-				l[vec][item]._pad[i] = MarsagliaXOR(&s);
+				lword[vec].baseline->_pad[i] = MarsagliaXOR(&s);
 			}
 		}
 	}
@@ -406,10 +406,20 @@ int main(int ac, char** av){
 
 	vector<TaskData> task_data(threadlevels.back());
 	for (int i = 0; i < threadlevels.back(); ++i) {
-		task_data[i].data = LineitemColumnar(items);
+		if (!baseline){
+			task_data[i].data = LineitemColumnar(items);
+		} else {
+			task_data[i].baseline = new word[items];
+		}
 	}
 
-	generateData(task_data, sorted);
+	if (!baseline) {
+		generateData(task_data, sorted);
+	} else {
+		generateWords(task_data, items);
+	}
+
+
 	BenchmarkOutput bo(vm);
 
 	bool first = true;
@@ -424,7 +434,6 @@ int main(int ac, char** av){
 				for (auto & w : task_data){ w.t = thread(runBench, &w, reps, cutoff, mult); }
 			} else {
 				for (auto & w : task_data) {
-					w.baseline = new word[items];
 					w.t = thread(runBaseline, w.baseline, items, reps);
 				}
 			}

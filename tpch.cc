@@ -170,12 +170,19 @@ struct LineitemColumnar {
 
 void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff, bool mult){
 	int64_t acc_counts[k_flags][k_status] {};
-	int64_t acc_quantity[3][2] {};
-	int64_t acc_baseprice[3][2] {};
-	int64_t acc_discounted[3][2] {};
-	int64_t acc_disctax[3][2] {};
+	int64_t acc_quantity[k_flags][k_status] {};
+	int64_t acc_baseprice[k_flags][k_status] {};
+	int64_t acc_discounted[k_flags][k_status] {};
+	int64_t acc_disctax[k_flags][k_status] {};
 
-	for (size_t i = 0; i < l->len; ++i) {
+	int64_t acc2_counts[k_flags][k_status] {};
+	int64_t acc2_quantity[k_flags][k_status] {};
+	int64_t acc2_baseprice[k_flags][k_status] {};
+	int64_t acc2_discounted[k_flags][k_status] {};
+	int64_t acc2_disctax[k_flags][k_status] {};
+
+
+	for ( size_t i = 0; i < l->len; i+=2 ) {
 		if (l->l_shipdate[i] <= cutoff) {
 			auto &flag = l->l_returnflag[i];
 			auto &status = l->l_linestatus[i];
@@ -186,7 +193,7 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], i
 
 			int discounted;
 			if (mult){
-				discounted = (l->l_extendedprice[i] * (100 - l->l_discount[i]))/100;
+				discounted = (l->l_extendedprice[i] * (100 - l->l_discount[i]));
 			} else {
 				discounted = (l->l_extendedprice[i] ^ (l->l_discount[i]));
 			}
@@ -201,17 +208,56 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], i
 
 			acc_disctax[flag][status] += taxed;
 		}
+
+		if (l->l_shipdate[i + 1] <= cutoff) {
+			auto &flag = l->l_returnflag[i + 1];
+			auto &status = l->l_linestatus[i + 1];
+
+			acc2_counts[flag][status] += 1;
+			acc2_quantity[flag][status] += l->l_quantity[i + 1];
+			acc2_baseprice[flag][status] += l->l_extendedprice[i + 1];
+
+			int discounted;
+			if (mult){
+				discounted = (l->l_extendedprice[i + 1] * (100 - l->l_discount[i + 1]));
+			} else {
+				discounted = (l->l_extendedprice[i + 1] ^ (l->l_discount[i + 1]));
+			}
+			acc2_discounted[flag][status] += discounted;
+
+			int taxed;
+			if (mult){
+				taxed = (discounted * (100 + l->l_tax[i + 1]))/100;
+			} else {
+				taxed = (l->l_extendedprice[i + 1] ^ (l->l_discount[i + 1]));
+			}
+
+			acc2_disctax[flag][status] += taxed;
+		}
 	}
 
-
+	/**
+	 * run hyper on same environment.
+	 * use provided work generator
+	 * use icc.
+	 * check on sse flags (avx has no int stuff).
+	 * check on clang + llvm.
+	 */
 	for (int flag = 0; flag < k_flags; flag++) {
 	  for (int status = 0; status < k_status; status++) {
 	    auto & op = out[flag][status];
 	    op.sum_base_price = acc_baseprice[flag][status];
 	    op.sum_qt = acc_quantity[flag][status];
-	    op.sum_disc_price= acc_discounted[flag][status];
-	    op.sum_charge = acc_disctax[flag][status];
+	    op.sum_disc_price= acc_discounted[flag][status]/100;
+	    op.sum_charge = acc_disctax[flag][status]/10000;
 	    op.count = acc_counts[flag][status];
+
+	    op.sum_base_price += acc2_baseprice[flag][status];
+	    op.sum_qt += acc2_quantity[flag][status];
+	    op.sum_disc_price+= acc2_discounted[flag][status]/100;
+	    op.sum_charge += acc2_disctax[flag][status]/10000;
+	    op.count += acc2_counts[flag][status];
+
 	    op.avg_disc = op.sum_disc_price/op.count;
 	    op.avg_price = op.sum_base_price/op.count;
 	    op.avg_qty = op.sum_qt/op.count;

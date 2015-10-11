@@ -268,9 +268,13 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], i
 	/**
 	 * run hyper on same environment.
 	 * use provided work generator
+	 * check on sse flags (avx has no int stuff, so try avx2 to see if compiler is ok).
+	 * expand fields. see effect on bandwidth.
+	 * open ec2 account.
 	 * use icc.
-	 * check on sse flags (avx has no int stuff).
-	 * check on clang + llvm.
+	 * check on clang + llvm (re vectorization).
+	 * get reliable lanka baseline.
+	 *
 	 */
 	for (int flag = 0; flag < k_flags; flag++) {
 	  for (int status = 0; status < k_status; status++) {

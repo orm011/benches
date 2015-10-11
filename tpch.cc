@@ -230,7 +230,7 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], i
 
 			int taxed;
 			if (mult){
-				taxed = (discounted * (100 + l->l_tax[i]))/100;
+				taxed = discounted * (100 + l->l_tax[i]);
 			} else {
 				taxed = (l->l_extendedprice[i] ^ (l->l_discount[i]));
 			}
@@ -256,7 +256,7 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], i
 
 			int taxed;
 			if (mult){
-				taxed = (discounted * (100 + l->l_tax[i + 1]))/100;
+				taxed = discounted * (100 + l->l_tax[i + 1]);
 			} else {
 				taxed = (l->l_extendedprice[i + 1] ^ (l->l_discount[i + 1]));
 			}

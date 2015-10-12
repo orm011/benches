@@ -133,7 +133,7 @@ void tpch_q1_baseline(const word *l, size_t len,  int64_t *out) {
 }
 
 
-void tpch_q1_columnar_masked(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
+void tpch_q1_columnar_double_masked(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
 {
 
 	int32_t acc_counts[k_flags][k_status] {};
@@ -179,35 +179,127 @@ void tpch_q1_columnar_masked(const LineitemColumnar *l, q1out out[k_flags][k_sta
 }
 
 
-
-void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
+void tpch_q1_columnar_condstore_direct(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
 {
 
 	int32_t acc_counts[k_flags][k_status] {};
 	int32_t acc_quantity[k_flags][k_status] {};
 
-	int32_t maskfs {};
 	int64_t acc_baseprice[k_flags][k_status] {};
 	int64_t acc_discounted[k_flags][k_status] {};
 	int64_t acc_disctax[k_flags][k_status] {};
 
 	for ( size_t i = 0; i < l->len; i+=1 ) {
-		auto mask = (l->l_shipdate[i] <= cutoff) ? 0xffffffff : 0;
 		auto &flag = l->l_returnflag[i];
 		auto &status = l->l_linestatus[i];
 
-		for (int f = 0; f < k_flags; ++f) {
-			for (int s = 0; s < k_status; ++s) {
-				maskfs = (mask && (flag == f) && (status == s)) ? 0xffff : 0x0000;
-				acc_counts[f][s] += (maskfs && 1);
-				acc_quantity[f][s] += (maskfs && l->l_quantity[i]);
-				acc_baseprice[f][s] += (maskfs && l->l_extendedprice[i]);
-				auto discounted = (maskfs && (l->l_extendedprice[i] * (100 - l->l_discount[i])));
+		auto mask = (l->l_shipdate[i] <= cutoff);
+
+		int32_t count = mask ? 1 : 0;
+		acc_counts[flag][status] += count;
+
+		int32_t quant = mask ? l->l_quantity[i] : 0;
+		acc_quantity[flag][status] += quant;
+
+		int32_t basepr = mask ? l->l_extendedprice[i] : 0;
+		acc_baseprice[flag][status] += basepr;
+
+		int discounted = mask ? (l->l_extendedprice[i] * (100 - l->l_discount[i])) : 0;
+		acc_discounted[flag][status] += discounted;
+
+		int taxed = mask ? (discounted * (100 + l->l_tax[i])) : 0;
+		acc_disctax[flag][status] += taxed;
+	}
+
+
+	for (int flag = 0; flag < k_flags; flag++) {
+	  for (int status = 0; status < k_status; status++) {
+	    auto & op = out[flag][status];
+	    op.sum_base_price = acc_baseprice[flag][status];
+	    op.sum_qt = acc_quantity[flag][status];
+	    op.sum_disc_price= acc_discounted[flag][status]/100;
+	    op.sum_charge = acc_disctax[flag][status]/10000;
+	    op.count = acc_counts[flag][status];
+
+	    op.avg_disc = op.sum_disc_price/op.count;
+	    op.avg_price = op.sum_base_price/op.count;
+	    op.avg_qty = op.sum_qt/op.count;
+	  }
+	}
+}
+
+
+void tpch_q1_columnar_masked_direct(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
+{
+
+	int32_t acc_counts[k_flags][k_status] {};
+	int32_t acc_quantity[k_flags][k_status] {};
+
+	int64_t acc_baseprice[k_flags][k_status] {};
+	int64_t acc_discounted[k_flags][k_status] {};
+	int64_t acc_disctax[k_flags][k_status] {};
+
+	for ( size_t i = 0; i < l->len; i+=1 ) {
+		auto &flag = l->l_returnflag[i];
+		auto &status = l->l_linestatus[i];
+
+		auto mask = (l->l_shipdate[i] <= cutoff) ? 0xffffffff : 0;
+
+		acc_counts[flag][status] += mask & 1;
+		acc_quantity[flag][status] += mask & l->l_quantity[i];
+		acc_baseprice[flag][status] += mask & l->l_extendedprice[i];
+
+		int discounted = (l->l_extendedprice[i] * (100 - l->l_discount[i]));
+		acc_discounted[flag][status] += mask & discounted;
+		int taxed = (discounted * (100 + l->l_tax[i]));
+		acc_disctax[flag][status] += mask & taxed;
+	}
+
+
+	for (int flag = 0; flag < k_flags; flag++) {
+	  for (int status = 0; status < k_status; status++) {
+	    auto & op = out[flag][status];
+	    op.sum_base_price = acc_baseprice[flag][status];
+	    op.sum_qt = acc_quantity[flag][status];
+	    op.sum_disc_price= acc_discounted[flag][status]/100;
+	    op.sum_charge = acc_disctax[flag][status]/10000;
+	    op.count = acc_counts[flag][status];
+
+	    op.avg_disc = op.sum_disc_price/op.count;
+	    op.avg_price = op.sum_base_price/op.count;
+	    op.avg_qty = op.sum_qt/op.count;
+	  }
+	}
+}
+
+
+
+void tpch_q1_columnar_plain(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
+{
+
+	int32_t acc_counts[k_flags][k_status] {};
+	int32_t acc_quantity[k_flags][k_status] {};
+
+	int64_t acc_baseprice[k_flags][k_status] {};
+	int64_t acc_discounted[k_flags][k_status] {};
+	int64_t acc_disctax[k_flags][k_status] {};
+
+	for ( size_t i = 0; i < l->len; i+=1 ) {
+		auto &flag = l->l_returnflag[i];
+		auto &status = l->l_linestatus[i];
+
+		if (l->l_shipdate[i] <= cutoff) {
+				acc_counts[flag][status] += 1;
+				acc_quantity[flag][status] += l->l_quantity[i];
+				acc_baseprice[flag][status] += l->l_extendedprice[i];
+
+				int discounted = (l->l_extendedprice[i] * (100 - l->l_discount[i]));
 				acc_discounted[flag][status] += discounted;
-				acc_disctax[flag][status]  +=  discounted * (100 + l->l_tax[i]);
-			}
+				int taxed = (discounted * (100 + l->l_tax[i]));
+				acc_disctax[flag][status] += taxed;
 		}
 	}
+
 
 	for (int flag = 0; flag < k_flags; flag++) {
 	  for (int status = 0; status < k_status; status++) {
@@ -272,10 +364,25 @@ void generateData (const vector<TaskData>  &l, bool sorted) {
 	}
 }
 
-void runBench(TaskData *w, int reps, uint16_t cutoff) {
+void runBench(TaskData *w, int reps, uint16_t cutoff, string variant) {
+	void (*f)(const LineitemColumnar *, q1out (*)[2], int);
+
+	if (variant == "plain"){
+		f = tpch_q1_columnar_plain;
+	} else if (variant == "masked_direct") {
+		f = tpch_q1_columnar_masked_direct;
+	} else if (variant == "double_masked") {
+		f = tpch_q1_columnar_double_masked;
+	} else if (variant == "condstore_direct") {
+		f = tpch_q1_columnar_condstore_direct;
+	} else {
+		assert(0);
+		return;
+	}
+
 	for (int i = 0; i < reps; ++i) {
 		memset(&w->ans, 0, sizeof(w->ans));
-		tpch_q1_columnar(&w->data, w->ans, cutoff);
+		(*f)(&w->data, w->ans, cutoff);
 	}
 }
 
@@ -291,7 +398,8 @@ int main(int ac, char** av){
 	    ("reps", po::value<int>()->default_value(1), "number of repetitions")
 		("selectivities", po::value<vector<int>>()->multitoken()->default_value(selectivities, "10, 90"), "from 1 to 100, percentage of tuples that qualify.")
 		("sorted", po::value<bool>()->default_value(true), "0 to leave data in position, or 1 to sort workload by shipdate")
-		("results", po::value<bool>()->default_value(false), "0 hides results for the last run of the first thread, 1 shows them");
+		("results", po::value<bool>()->default_value(false), "0 hides results for the last run of the first thread, 1 shows them")
+		("variant", po::value<string>()->default_value("plain"), "variant to use: plain");
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(ac, av, desc), vm);
@@ -313,6 +421,7 @@ int main(int ac, char** av){
 
 	bool sorted = vm["sorted"].as<bool>();
 	bool results = vm["results"].as<bool>();
+	string variant = vm["variant"].as<string>();
 
 	vector<TaskData> task_data(threadlevels.back());
 	for (int i = 0; i < threadlevels.back(); ++i) {
@@ -330,7 +439,7 @@ int main(int ac, char** av){
 		for (auto threads : threadlevels) {
 
 			auto before = clk::now();
-			for (auto & w : task_data){ w.t = thread(runBench, &w, reps, cutoff); }
+			for (auto & w : task_data){ w.t = thread(runBench, &w, reps, cutoff, variant); }
 			auto between = clk::now();
 			for (auto & w : task_data) { w.t.join(); }
 			auto after = clk::now();

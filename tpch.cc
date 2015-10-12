@@ -6,65 +6,6 @@
 
 using std::ostream;
 
-int MarsagliaXOR(int *p_seed) {
-    int seed = *p_seed;
-
-    if (seed == 0) {
-        seed = 1;
-    }
-
-    seed ^= seed << 6;
-    seed ^= ((unsigned)seed) >> 21;
-    seed ^= seed << 7;
-
-    *p_seed = seed;
-
-    return seed & 0x7FFFFFFF;
-}
-
-
-struct Lineitem {
-	int l_orderkey; // too narrow?
-	int l_partkey;
-	int l_suppkey;
-	int l_linenumber;
-	int l_quantity;
-	int l_extendedprice;
-	char l_discount;
-	char l_tax;
-	char l_returnflag;
-	char l_linestatus;
-	int l_shipdate;
-	int l_commitdate;
-	int l_receiptdate;
-	int l_shipinstruct;
-	int l_shipmode; // too wide?
-	int l_comment; // too narrow?
-
-	auto toTuple() const {
-		auto x =  std::tie(l_orderkey,
-					l_partkey,
-					l_suppkey,
-					l_linenumber,
-					l_quantity,
-					l_extendedprice,
-					l_discount,
-					l_tax,
-					l_returnflag,
-					l_linestatus,
-					l_shipdate,
-					l_commitdate,
-					l_receiptdate,
-					l_shipinstruct,
-					l_shipmode,
-					l_comment);
-		return x;
-	}
-
-	bool operator==(const Lineitem &other) const {
-		return (this->toTuple() == other.toTuple());
-	}
-};
 
 /*
  *
@@ -141,10 +82,6 @@ template <typename T> T* allocate(size_t len, size_t byte_alignment = 0) {
 	return (new T[len]); // 0 is self-aligned
 }
 
-struct word {
-	int64_t _pad[8];
-};
-
 
 struct LineitemColumnar {
 	LineitemColumnar() = default;
@@ -196,86 +133,35 @@ void tpch_q1_baseline(const word *l, size_t len,  int64_t *out) {
 }
 
 
-void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff, bool mult)
+void tpch_q1_columnar_masked(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
 {
 
-	int64_t acc_counts[k_flags][k_status] {};
-	int64_t acc_quantity[k_flags][k_status] {};
+	int32_t acc_counts[k_flags][k_status] {};
+	int32_t acc_quantity[k_flags][k_status] {};
+
+	int32_t maskfs {};
 	int64_t acc_baseprice[k_flags][k_status] {};
 	int64_t acc_discounted[k_flags][k_status] {};
 	int64_t acc_disctax[k_flags][k_status] {};
 
-	int64_t acc2_counts[k_flags][k_status] {};
-	int64_t acc2_quantity[k_flags][k_status] {};
-	int64_t acc2_baseprice[k_flags][k_status] {};
-	int64_t acc2_discounted[k_flags][k_status] {};
-	int64_t acc2_disctax[k_flags][k_status] {};
+	for ( size_t i = 0; i < l->len; i+=1 ) {
+		auto mask = (l->l_shipdate[i] <= cutoff) ? 0xffffffff : 0;
+		auto &flag = l->l_returnflag[i];
+		auto &status = l->l_linestatus[i];
 
-	for ( size_t i = 0; i < l->len; i+=2 ) {
-		if (l->l_shipdate[i] <= cutoff) {
-			auto &flag = l->l_returnflag[i];
-			auto &status = l->l_linestatus[i];
-
-			acc_counts[flag][status] += 1;
-			acc_quantity[flag][status] += l->l_quantity[i];
-			acc_baseprice[flag][status] += l->l_extendedprice[i];
-
-			int discounted;
-			if (mult){
-				discounted = (l->l_extendedprice[i] * (100 - l->l_discount[i]));
-			} else {
-				discounted = (l->l_extendedprice[i] ^ (l->l_discount[i]));
+		for (int f = 0; f < k_flags; ++f) {
+			for (int s = 0; s < k_status; ++s) {
+				maskfs = (mask && (flag == f) && (status == s)) ? 0xffff : 0x0000;
+				acc_counts[f][s] += (maskfs && 1);
+				acc_quantity[f][s] += (maskfs && l->l_quantity[i]);
+				acc_baseprice[f][s] += (maskfs && l->l_extendedprice[i]);
+				auto discounted = (maskfs && (l->l_extendedprice[i] * (100 - l->l_discount[i])));
+				acc_discounted[flag][status] += discounted;
+				acc_disctax[flag][status]  +=  discounted * (100 + l->l_tax[i]);
 			}
-			acc_discounted[flag][status] += discounted;
-
-			int taxed;
-			if (mult){
-				taxed = discounted * (100 + l->l_tax[i]);
-			} else {
-				taxed = (l->l_extendedprice[i] ^ (l->l_discount[i]));
-			}
-
-			acc_disctax[flag][status] += taxed;
-		}
-
-		if (l->l_shipdate[i + 1] <= cutoff) {
-			auto &flag = l->l_returnflag[i + 1];
-			auto &status = l->l_linestatus[i + 1];
-
-			acc2_counts[flag][status] += 1;
-			acc2_quantity[flag][status] += l->l_quantity[i + 1];
-			acc2_baseprice[flag][status] += l->l_extendedprice[i + 1];
-
-			int discounted;
-			if (mult){
-				discounted = (l->l_extendedprice[i + 1] * (100 - l->l_discount[i + 1]));
-			} else {
-				discounted = (l->l_extendedprice[i + 1] ^ (l->l_discount[i + 1]));
-			}
-			acc2_discounted[flag][status] += discounted;
-
-			int taxed;
-			if (mult){
-				taxed = discounted * (100 + l->l_tax[i + 1]);
-			} else {
-				taxed = (l->l_extendedprice[i + 1] ^ (l->l_discount[i + 1]));
-			}
-
-			acc2_disctax[flag][status] += taxed;
 		}
 	}
 
-	/**
-	 * run hyper on same environment.
-	 * use provided work generator
-	 * check on sse flags (avx has no int stuff, so try avx2 to see if compiler is ok).
-	 * expand fields. see effect on bandwidth.
-	 * open ec2 account.
-	 * use icc.
-	 * check on clang + llvm (re vectorization).
-	 * get reliable lanka baseline.
-	 *
-	 */
 	for (int flag = 0; flag < k_flags; flag++) {
 	  for (int status = 0; status < k_status; status++) {
 	    auto & op = out[flag][status];
@@ -285,11 +171,52 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], i
 	    op.sum_charge = acc_disctax[flag][status]/10000;
 	    op.count = acc_counts[flag][status];
 
-	    op.sum_base_price += acc2_baseprice[flag][status];
-	    op.sum_qt += acc2_quantity[flag][status];
-	    op.sum_disc_price+= acc2_discounted[flag][status]/100;
-	    op.sum_charge += acc2_disctax[flag][status]/10000;
-	    op.count += acc2_counts[flag][status];
+	    op.avg_disc = op.sum_disc_price/op.count;
+	    op.avg_price = op.sum_base_price/op.count;
+	    op.avg_qty = op.sum_qt/op.count;
+	  }
+	}
+}
+
+
+
+void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
+{
+
+	int32_t acc_counts[k_flags][k_status] {};
+	int32_t acc_quantity[k_flags][k_status] {};
+
+	int32_t maskfs {};
+	int64_t acc_baseprice[k_flags][k_status] {};
+	int64_t acc_discounted[k_flags][k_status] {};
+	int64_t acc_disctax[k_flags][k_status] {};
+
+	for ( size_t i = 0; i < l->len; i+=1 ) {
+		auto mask = (l->l_shipdate[i] <= cutoff) ? 0xffffffff : 0;
+		auto &flag = l->l_returnflag[i];
+		auto &status = l->l_linestatus[i];
+
+		for (int f = 0; f < k_flags; ++f) {
+			for (int s = 0; s < k_status; ++s) {
+				maskfs = (mask && (flag == f) && (status == s)) ? 0xffff : 0x0000;
+				acc_counts[f][s] += (maskfs && 1);
+				acc_quantity[f][s] += (maskfs && l->l_quantity[i]);
+				acc_baseprice[f][s] += (maskfs && l->l_extendedprice[i]);
+				auto discounted = (maskfs && (l->l_extendedprice[i] * (100 - l->l_discount[i])));
+				acc_discounted[flag][status] += discounted;
+				acc_disctax[flag][status]  +=  discounted * (100 + l->l_tax[i]);
+			}
+		}
+	}
+
+	for (int flag = 0; flag < k_flags; flag++) {
+	  for (int status = 0; status < k_status; status++) {
+	    auto & op = out[flag][status];
+	    op.sum_base_price = acc_baseprice[flag][status];
+	    op.sum_qt = acc_quantity[flag][status];
+	    op.sum_disc_price= acc_discounted[flag][status]/100;
+	    op.sum_charge = acc_disctax[flag][status]/10000;
+	    op.count = acc_counts[flag][status];
 
 	    op.avg_disc = op.sum_disc_price/op.count;
 	    op.avg_price = op.sum_base_price/op.count;
@@ -299,29 +226,23 @@ void tpch_q1_columnar(const LineitemColumnar *l, q1out out[k_flags][k_status], i
 }
 
 struct TaskData {
-	word * baseline;
 	LineitemColumnar data {};
 	q1out ans[k_flags][k_status] {};
 	thread t {};
 	char pad[64] {};
 };
 
-
-void generateWords (const vector<TaskData>  &lword, size_t len) {
-	cilkpub::pedigree_scope scope = cilkpub::pedigree_scope::current();
-	cilkpub::DotMix c(0xabc);
-	c.init_scope(scope);
-
-	_Cilk_for (size_t vec = 0; vec < lword.size(); ++vec) {
-		_Cilk_for (size_t item = 0; item < len; ++item) {
-			int s = c.get();
-			for (int i = 0; i < 8; ++i) {
-				lword[vec].baseline->_pad[i] = MarsagliaXOR(&s);
-			}
-		}
-	}
-}
-
+/**
+ * run hyper on same environment.
+ * use provided work generator
+ * check on sse flags (avx has no int stuff, so try avx2 to see if compiler is ok).
+ * expand fields. see effect on bandwidth.
+ * open ec2 account.
+ * use icc.
+ * check on clang + llvm (re vectorization).
+ * get reliable lanka baseline.
+ *
+ */
 
 /**
  * not for NUMA.
@@ -351,21 +272,10 @@ void generateData (const vector<TaskData>  &l, bool sorted) {
 	}
 }
 
-int64_t runBaseline(const word *l, size_t len, int reps) {
-	int64_t out = 0;
-
-	for (int i = 0; i < reps; ++i) {
-		tpch_q1_baseline(l, len, &out);
-	}
-
-	return out;
-}
-
-
-void runBench(TaskData *w, int reps, uint16_t cutoff, bool mult) {
+void runBench(TaskData *w, int reps, uint16_t cutoff) {
 	for (int i = 0; i < reps; ++i) {
 		memset(&w->ans, 0, sizeof(w->ans));
-		tpch_q1_columnar(&w->data, w->ans, cutoff, mult);
+		tpch_q1_columnar(&w->data, w->ans, cutoff);
 	}
 }
 
@@ -381,9 +291,7 @@ int main(int ac, char** av){
 	    ("reps", po::value<int>()->default_value(1), "number of repetitions")
 		("selectivities", po::value<vector<int>>()->multitoken()->default_value(selectivities, "10, 90"), "from 1 to 100, percentage of tuples that qualify.")
 		("sorted", po::value<bool>()->default_value(true), "0 to leave data in position, or 1 to sort workload by shipdate")
-		("mult", po::value<bool>()->default_value(true), "1 to use multiplication, 0 replace with xor")
-		("results", po::value<bool>()->default_value(false), "0 hides results, 1 shows them")
-		("baseline", po::value<bool>()->default_value(false), "run the memory read baseline instead. most other options are meaningless");
+		("results", po::value<bool>()->default_value(false), "0 hides results for the last run of the first thread, 1 shows them");
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(ac, av, desc), vm);
@@ -404,25 +312,14 @@ int main(int ac, char** av){
 	vm.erase("threadlevels");
 
 	bool sorted = vm["sorted"].as<bool>();
-	bool mult = vm["mult"].as<bool>();
 	bool results = vm["results"].as<bool>();
-	bool baseline = vm["baseline"].as<bool>();
 
 	vector<TaskData> task_data(threadlevels.back());
 	for (int i = 0; i < threadlevels.back(); ++i) {
-		if (!baseline){
 			task_data[i].data = LineitemColumnar(items);
-		} else {
-			task_data[i].baseline = new word[items];
-		}
 	}
 
-	if (!baseline) {
-		generateData(task_data, sorted);
-	} else {
-		generateWords(task_data, items);
-	}
-
+	generateData(task_data, sorted);
 
 	BenchmarkOutput bo(vm);
 
@@ -433,16 +330,8 @@ int main(int ac, char** av){
 		for (auto threads : threadlevels) {
 
 			auto before = clk::now();
-
-			if (!baseline) {
-				for (auto & w : task_data){ w.t = thread(runBench, &w, reps, cutoff, mult); }
-			} else {
-				for (auto & w : task_data) {
-					w.t = thread(runBaseline, w.baseline, items, reps);
-				}
-			}
+			for (auto & w : task_data){ w.t = thread(runBench, &w, reps, cutoff); }
 			auto between = clk::now();
-
 			for (auto & w : task_data) { w.t.join(); }
 			auto after = clk::now();
 

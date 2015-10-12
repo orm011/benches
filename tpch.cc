@@ -150,24 +150,24 @@ struct LineitemColumnar {
 	LineitemColumnar() = default;
 
 	LineitemColumnar(size_t len) : len(len) {
-		l_shipdate = allocate<uint16_t>(len);
-		l_quantity = allocate<int16_t>(len);
+		l_shipdate = allocate<int32_t>(len);
+		l_quantity = allocate<int32_t>(len);
 		l_extendedprice = allocate<int32_t>(len);
-		l_discount = allocate<uint16_t>(len); /*0.00 to 100.00*/
-		l_tax = allocate<uint16_t>(len); /*0.00 to 100.00*/
-		l_returnflag = allocate<char>(len); /* 2 values*/
-		l_linestatus = allocate<char>(len); /* 3 values*/
+		l_discount = allocate<int32_t>(len); /*0.00 to 100.00*/
+		l_tax = allocate<int32_t>(len); /*0.00 to 100.00*/
+		l_returnflag = allocate<int32_t>(len); /* 2 values*/
+		l_linestatus = allocate<int32_t>(len); /* 3 values*/
 	}
 
 	word w1 {};
 	size_t len {};
-	uint16_t *l_shipdate {}; //where
-	int16_t *l_quantity {};
+	int32_t *l_shipdate {}; //where
+	int32_t *l_quantity {};
 	int32_t *l_extendedprice {};
-	uint16_t *l_discount {};
-	uint16_t *l_tax {};
-	char *l_returnflag {};
-	char *l_linestatus {};
+	int32_t *l_discount {};
+	int32_t *l_tax {};
+	int32_t *l_returnflag {};
+	int32_t *l_linestatus {};
 	word w2 {};
 };
 

@@ -78,5 +78,46 @@ private:
 	unordered_map<string,string> pairs {};
 };
 
+int MarsagliaXOR(int *p_seed) {
+    int seed = *p_seed;
+
+    if (seed == 0) {
+        seed = 1;
+    }
+
+    seed ^= seed << 6;
+    seed ^= ((unsigned)seed) >> 21;
+    seed ^= seed << 7;
+
+    *p_seed = seed;
+
+    return seed & 0x7FFFFFFF;
+}
+
+
+struct Lineitem {
+	int l_orderkey; // too narrow?
+	int l_partkey;
+	int l_suppkey;
+	int l_linenumber;
+	int l_quantity;
+	int l_extendedprice;
+	char l_discount;
+	char l_tax;
+	char l_returnflag;
+	char l_linestatus;
+	int l_shipdate;
+	int l_commitdate;
+	int l_receiptdate;
+	int l_shipinstruct;
+	int l_shipmode; // too wide?
+	int l_comment; // too narrow?
+};
+
+struct word {
+	int64_t _pad[8];
+};
+
+
 
 #endif /* COMMON_H_ */

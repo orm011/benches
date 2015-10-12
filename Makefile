@@ -1,6 +1,6 @@
 CXXWARNS=-Wall -Wextra -Wno-unused-parameter -Werror -Wno-char-subscripts -Wno-deprecated-declarations
 LDDFLAGS=-lboost_program_options
-CXXFLAGS=--std=c++14 -march=native -mtune=native -O3 -g $(CXXWARNS) -fcilkplus
+CXXFLAGS=--std=c++14 -mavx -march=native -mtune=native -O3 -g $(CXXWARNS) -fcilkplus
 HEADERS=common.h
 
 %.vm.bin: %.cc $(HEADERS)

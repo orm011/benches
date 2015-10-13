@@ -3,6 +3,7 @@
 #include <cilkpub/sort.h>
 #include <ostream>
 #include "common.h"
+#include "immintrin.h"
 
 using std::ostream;
 
@@ -129,6 +130,82 @@ void tpch_q1_baseline(const word *l, size_t len,  int64_t *out) {
 	 */
 	for (size_t i = 0; i < k_unroll; ++i ) {
 		*out ^= sum[i];
+	}
+}
+
+inline int32_t sum_lanes(const __m128i & vector){
+	int32_t total = 0;
+	const int32_t *p = (int32_t*)&vector;
+	for (int lane = 0; lane < 4; ++lane) {
+		total += p[lane];
+	}
+
+	return total;
+}
+
+void tpch_q1_columnar_double_masked_avx128(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
+{
+
+	__m128i acc_counts[k_flags][k_status] {};
+	__m128i acc_quantity[k_flags][k_status] {};
+	__m128i acc_baseprice[k_flags][k_status] {};
+	__m128i acc_discounted[k_flags][k_status] {};
+	__m128i acc_disctax[k_flags][k_status] {};
+
+	__m128i cutoffv = _mm_set1_epi32(cutoff);
+
+	__m128i _ffff = _mm_set1_epi32(0xffffffff);
+	__m128i _1111 = _mm_set1_epi32(0x1);
+	//__m128i _0000 = _mm_set1_epi32(0);
+
+
+	for ( size_t i = 0; i < l->len; i+=4 ) {
+		auto datev = _mm_load_si128((__m128i*)&l->l_shipdate[i]);
+
+		auto compgt = _mm_cmpgt_epi32(datev, cutoffv);
+		auto mask = _mm_xor_si128(compgt, _ffff);
+
+		auto flagv = _mm_load_si128((__m128i*)&l->l_returnflag[i]);
+		auto statusv = _mm_load_si128((__m128i*)&l->l_linestatus[i]);
+		auto quantityv = _mm_load_si128((__m128i*)&l->l_quantity[i]);
+		auto pricev = _mm_load_si128((__m128i*)&l->l_extendedprice[i]);
+
+
+		for (int f = 0; f < k_flags; ++f) {
+			auto fv = _mm_set1_epi32(f);
+			auto eqf = _mm_cmpeq_epi32(flagv, fv);
+
+			for (int s = 0; s < k_status; ++s) {
+				auto sv = _mm_set1_epi32(s);
+				auto eqs = _mm_cmpeq_epi32(statusv, sv);
+
+				auto botheqv = _mm_and_si128(eqs, eqf);
+				auto maskfsv = _mm_and_si128(botheqv, mask);
+				acc_counts[f][s] =  _mm_add_epi32(_mm_and_si128(maskfsv, _1111), acc_counts[f][s]);
+				acc_quantity[f][s] = _mm_add_epi32(_mm_and_si128(maskfsv, quantityv), acc_quantity[f][s]);
+				acc_baseprice[f][s] = _mm_add_epi32(_mm_and_si128(maskfsv, quantityv), acc_quantity[f][s]);
+//				auto discounted = (maskfs && (l->l_extendedprice[i] * (100 - l->l_discount[i])));
+//				acc_discounted[flag][status] += discounted;
+//				acc_disctax[flag][status]  +=  discounted * (100 + l->l_tax[i]);
+			}
+		}
+	}
+
+	for (int flag = 0; flag < k_flags; flag++) {
+	  for (int status = 0; status < k_status; status++) {
+	    auto & op = out[flag][status];
+
+    	op.sum_base_price = sum_lanes(acc_baseprice[flag][status]);
+    	op.sum_qt = sum_lanes(acc_quantity[flag][status]);
+    	op.sum_disc_price= sum_lanes(acc_discounted[flag][status])/100;
+    	op.sum_charge = sum_lanes(acc_disctax[flag][status])/10000;
+    	op.count = sum_lanes(acc_counts[flag][status]);
+
+	    op.avg_disc = op.sum_disc_price/op.count;
+	    op.avg_price = op.sum_base_price/op.count;
+	    op.avg_qty = op.sum_qt/op.count;
+
+	  }
 	}
 }
 
@@ -365,7 +442,7 @@ void generateData (const vector<TaskData>  &l, bool sorted) {
 }
 
 void runBench(TaskData *w, int reps, uint16_t cutoff, string variant) {
-	void (*f)(const LineitemColumnar *, q1out (*)[2], int);
+	void (*f)(const LineitemColumnar *, q1out (*)[2], int) = nullptr;
 
 	if (variant == "plain"){
 		f = tpch_q1_columnar_plain;
@@ -375,6 +452,8 @@ void runBench(TaskData *w, int reps, uint16_t cutoff, string variant) {
 		f = tpch_q1_columnar_double_masked;
 	} else if (variant == "condstore_direct") {
 		f = tpch_q1_columnar_condstore_direct;
+	} else if (variant == "double_masked_avx128"){
+		f = tpch_q1_columnar_double_masked_avx128;
 	} else {
 		assert(0);
 		return;

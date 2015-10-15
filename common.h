@@ -122,6 +122,21 @@ struct word {
 	int64_t _pad[8];
 };
 
+/**
+ * 64 bytes -> 256 bits for avx2
+ */
+template <typename T> T* allocate(size_t len, size_t byte_alignment = 64) {
+	 char *p = (char*)malloc(sizeof(T)*len + byte_alignment); // extra padding
+
+	 if (byte_alignment > 0  && ((size_t)p) % byte_alignment != 0) {
+		 p += byte_alignment;
+		 auto remainder = ((size_t)p) % byte_alignment;
+		 p -= remainder;
+		 assert (((size_t)p % byte_alignment) == 0);
+	 }
+
+	 return (T*)p;
+}
 
 
 #endif /* COMMON_H_ */

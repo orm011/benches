@@ -42,6 +42,15 @@ int32_t avx128sum(int32_t *x, int size) {
 	return total;
 }
 
+
+void printvector(const char * name, __m256i & v){
+	auto vi = (int32_t*)&v;
+	printf("%s:\t%d %d %d %d %d %d %d %d\n", name, vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7]);
+}
+
+#define DISPLAYVEC(v) printvector(#v, v)
+
+
 void avx256gather() {
 	int32_t * base = allocate<int32_t>(32);
 	for (int i = 0; i < 32; ++i) {
@@ -54,22 +63,23 @@ void avx256gather() {
 	__m256i res1 = _mm256_i32gather_epi32(base, pos, 4);
 	__m256i res1rev = _mm256_i32gather_epi32(base, pos2, 4);
 	__m256i res2 = _mm256_i32gather_epi32(base, pos, 4);
-
-	int32_t * res1i = (int32_t*)(&res1);
-	int32_t * res1irev = (int32_t*)(&res1rev);
-	int32_t * res2i = (int32_t*)(&res2);
-
-	printf("1: %d %d %d %d %d %d %d %d\n", res1i[0], res1i[1], res1i[2], res1i[3], res1i[4], res1i[5], res1i[6], res1i[7]);
-	printf("1rev: %d %d %d %d %d %d %d %d\n", res1irev[0], res1irev[1], res1irev[2], res1irev[3], res1irev[4], res1irev[5], res1irev[6], res1irev[7]);
-	printf("2: %d %d %d %d %d %d %d %d\n", res2i[0], res2i[1], res2i[2], res2i[3], res2i[4], res2i[5], res2i[6], res2i[7]);
+	DISPLAYVEC(res1);
+	DISPLAYVEC(res1rev);
+	DISPLAYVEC(res2);
 
 	const int32_t ffs = 0xffffffff;
 	__m256i mask = _mm256_set_epi32(0,ffs,0,ffs,0,ffs,0,ffs);
 	__m256i source = _mm256_set_epi32(50, 50, 50, 50, 50, 50, 50, 50);
 	__m256i res_mask = _mm256_mask_i32gather_epi32(source, base, pos, mask, 1);
+	DISPLAYVEC(res_mask);
 
-	int32_t * res_maski = (int32_t*)(&res_mask);
-	printf("masked: %d %d %d %d %d %d %d %d\n", res_maski[0], res_maski[1], res_maski[2], res_maski[3], res_maski[4], res_maski[5], res_maski[6], res_maski[7]);
+	__m256i permutation = _mm256_set_epi32(1,0,3,2,5,4,7,6);
+	__m256i permutation2 = _mm256_set_epi32(0,0,1,1,2,2,3,3); // not really a perm
+
+	auto permres = _mm256_permutevar8x32_epi32(*(__m256i*)base, permutation);
+	auto perm2res = _mm256_permutevar8x32_epi32(*(__m256i*)base, permutation2);
+	DISPLAYVEC(permres);
+	DISPLAYVEC(perm2res);
 }
 
 void compare() {

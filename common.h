@@ -59,6 +59,10 @@ public:
 		pairs[a] = to_string(b);
 	}
 
+	void set_variable(const std::string & a, const string &b) {
+		pairs[a] = b;
+	}
+
 	void display_param_names(const std::string & delimiter = ",") const {
 		for (auto & p : pairs) {
 			cout << p.first << delimiter;

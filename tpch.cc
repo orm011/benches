@@ -41,9 +41,6 @@ struct q1out {
 	int64_t sum_base_price {};
 	int64_t sum_disc_price {};
 	int64_t sum_charge {};
-	int64_t avg_qty {};
-	int64_t avg_price {};
-	int64_t avg_disc {};
 
 	friend ostream & operator<<(ostream &o, const q1out &q) {
 		o << "{ "\
@@ -51,10 +48,7 @@ struct q1out {
 				<< OUT(q.sum_qt) \
 				<< OUT(q.sum_base_price) \
 				<< OUT(q.sum_disc_price) \
-				<< OUT(q.sum_charge) \
-				<< OUT(q.avg_qty) \
-				<< OUT(q.avg_price) \
-				<< OUT(q.avg_disc)\
+				<< OUT(q.sum_charge)
 		<< "}";
 		return o;
 	}
@@ -65,9 +59,6 @@ struct q1out {
 		sum_base_price = rhs.sum_base_price;
 		sum_disc_price = rhs.sum_disc_price;
 		sum_charge = rhs.sum_charge;
-		avg_qty = rhs.avg_qty;
-		avg_price = rhs.avg_price;
-		avg_disc = rhs.avg_disc;
 
 		return *this;
 	}
@@ -77,10 +68,7 @@ struct q1out {
 					l.sum_qt == r.sum_qt &&
 					l.sum_base_price == r.sum_base_price &&
 					l.sum_disc_price == r.sum_disc_price &&
-					l.sum_charge == r.sum_charge &&
-					l.avg_qty == r.avg_qty &&
-					l.avg_price == r.avg_price &&
-					l.avg_disc == r.avg_disc;
+					l.sum_charge == r.sum_charge;
 	}
 
 	friend bool operator!=(const q1out &l, const q1out &r) {
@@ -244,12 +232,6 @@ void tpch_q1_columnar_double_masked_avx128(const LineitemColumnar *l, q1out out[
     	op.sum_disc_price= sum_lanes(acc_discounted[flag][status])/100;
     	op.sum_charge = sum_lanes(acc_disctax[flag][status])/10000;
     	op.count = sum_lanes(acc_counts[flag][status]);
-
-	    if (op.count > 0){
-	    	op.avg_disc = op.sum_disc_price/op.count;
-	    	op.avg_price = op.sum_base_price/op.count;
-	    	op.avg_qty = op.sum_qt/op.count;
-	    }
 	  }
 	}
 }
@@ -293,11 +275,6 @@ void tpch_q1_columnar_double_masked(const LineitemColumnar *l, q1out out[k_flags
 	    op.sum_charge = acc_disctax[flag][status]/10000;
 	    op.count = acc_counts[flag][status];
 
-	    if (op.count > 0){
-	    	op.avg_disc = op.sum_disc_price/op.count;
-	    	op.avg_price = op.sum_base_price/op.count;
-	    	op.avg_qty = op.sum_qt/op.count;
-	    }
 	  }
 	}
 }
@@ -347,11 +324,6 @@ void tpch_q1_columnar_condstore_direct(const LineitemColumnar *l, q1out out[k_fl
 	    op.sum_charge = acc_disctax[flag][status]/10000;
 	    op.count = acc_counts[flag][status];
 
-	    if (op.count > 0){
-	    	op.avg_disc = op.sum_disc_price/op.count;
-	    	op.avg_price = op.sum_base_price/op.count;
-	    	op.avg_qty = op.sum_qt/op.count;
-	    }
 	  }
 	}
 }
@@ -392,12 +364,6 @@ void tpch_q1_columnar_masked_direct(const LineitemColumnar *l, q1out out[k_flags
 	    op.sum_disc_price= acc_discounted[flag][status]/100;
 	    op.sum_charge = acc_disctax[flag][status]/10000;
 	    op.count = acc_counts[flag][status];
-
-	    if (op.count > 0){
-	    	op.avg_disc = op.sum_disc_price/op.count;
-	    	op.avg_price = op.sum_base_price/op.count;
-	    	op.avg_qty = op.sum_qt/op.count;
-	    }
 	  }
 	}
 }
@@ -440,11 +406,6 @@ void tpch_q1_columnar_plain(const LineitemColumnar *l, q1out out[k_flags][k_stat
 	    op.sum_charge = acc_disctax[flag][status]/10000;
 	    op.count = acc_counts[flag][status];
 
-	    if (op.count > 0){
-	    	op.avg_disc = op.sum_disc_price/op.count;
-	    	op.avg_price = op.sum_base_price/op.count;
-	    	op.avg_qty = op.sum_qt/op.count;
-	    }
 	  }
 	}
 }

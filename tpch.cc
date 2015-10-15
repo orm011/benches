@@ -197,7 +197,6 @@ void tpch_q1_columnar_double_masked_avx128(const LineitemColumnar *l, q1out out[
 	__m128i _1s = _mm_set1_epi32(0x1);
 	__m128i _100s = _mm_set1_epi32(100);
 
-
 	for ( size_t i = 0; i < l->len; i+=4 ) {
 		auto datev = _mm_load_si128((__m128i*)&l->l_shipdate[i]);
 
@@ -589,6 +588,8 @@ int main(int ac, char** av){
 		for (auto & w : task_data) { w.t.join(); }
 		auto after = clk::now();
 
+		int count_total = 0;
+
 		if (first) {
 			for (int i = 0; i < k_flags; ++i) {
 				for (int j = 0 ;  j < k_status; ++j) {
@@ -596,8 +597,10 @@ int main(int ac, char** av){
 				}
 			}
 		} else {
+
 			for (int i = 0; i < k_flags; ++i) {
 				for (int j = 0; j < k_status; ++j) {
+					count_total += task_data[0].ans[i][j].count;
 					if (ref_answer[i][j] != task_data[0].ans[i][j]){
 						cerr << "WARNING: output mismatch with plain implementation found at l_linestatus: "
 								<< j << " l_returnflag: " << i << endl;
@@ -606,6 +609,10 @@ int main(int ac, char** av){
 					}
 				}
 			}
+		}
+
+		if (count_total != items) {
+			cerr << "WARNING: expected total count (items): " << items << " actual total count: " << count_total << endl;
 		}
 
 		if (results) {

@@ -588,8 +588,6 @@ int main(int ac, char** av){
 		for (auto & w : task_data) { w.t.join(); }
 		auto after = clk::now();
 
-		int count_total = 0;
-
 		if (first) {
 			for (int i = 0; i < k_flags; ++i) {
 				for (int j = 0 ;  j < k_status; ++j) {
@@ -600,7 +598,6 @@ int main(int ac, char** av){
 
 			for (int i = 0; i < k_flags; ++i) {
 				for (int j = 0; j < k_status; ++j) {
-					count_total += task_data[0].ans[i][j].count;
 					if (ref_answer[i][j] != task_data[0].ans[i][j]){
 						cerr << "WARNING: output mismatch with plain implementation found at l_linestatus: "
 								<< j << " l_returnflag: " << i << endl;
@@ -609,10 +606,6 @@ int main(int ac, char** av){
 					}
 				}
 			}
-		}
-
-		if (count_total != items) {
-			cerr << "WARNING: expected total count (items): " << items << " actual total count: " << count_total << endl;
 		}
 
 		if (results) {

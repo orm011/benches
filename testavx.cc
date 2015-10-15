@@ -51,10 +51,9 @@ void avx256gather() {
 	__m256i pos = _mm256_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7);
 	__m256i pos2 = _mm256_set_epi32(0, 1, 2, 3, 4, 5, 6, 7);
 
-
-	__m256i res1 = _mm256_i32gather_epi32(base, pos, 1);
-	__m256i res1rev = _mm256_i32gather_epi32(base, pos2, 1);
-	__m256i res2 = _mm256_i32gather_epi32(base, pos, 2);
+	__m256i res1 = _mm256_i32gather_epi32(base, pos, 4);
+	__m256i res1rev = _mm256_i32gather_epi32(base, pos2, 4);
+	__m256i res2 = _mm256_i32gather_epi32(base, pos, 4);
 
 	int32_t * res1i = (int32_t*)(&res1);
 	int32_t * res1irev = (int32_t*)(&res1rev);

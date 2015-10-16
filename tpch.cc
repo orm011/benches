@@ -228,6 +228,60 @@ void tpch_q1_columnar_double_masked_avx128(const LineitemColumnar *l, q1out out[
 }
 
 
+#define as_array(r) ((int32_t*)(&(r)))
+
+static const size_t k_vecsize = 8;
+void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
+{
+	__m256i cutoffv = _mm256_set1_epi32(cutoff);
+	__m256i _minus1 = _mm256_set1_epi32(0xffffffff);
+	__m256i _100s = _mm256_set1_epi32(100);
+
+	for ( size_t i = 0; i < l->len; i+= k_vecsize) {
+		auto datev = _mm256_load_si256((__m256i*)&l->l_shipdate[i]);
+		auto compgt = _mm256_cmpgt_epi32(datev, cutoffv);
+		auto mask = _mm256_xor_si256(compgt, _minus1);
+
+		if (!_mm256_testz_si256(mask, mask)) { // may want to remove for high selectivity
+			auto flagv = _mm256_load_si256((__m256i*)&(l->l_returnflag[i]));
+			auto statusv = _mm256_load_si256((__m256i*)&l->l_linestatus[i]);
+
+			auto quantityv = _mm256_load_si256((__m256i*)&l->l_quantity[i]);
+			auto pricev = _mm256_load_si256((__m256i*)&l->l_extendedprice[i]);
+			auto discountv = _mm256_load_si256((__m256i*)&l->l_discount[i]);
+			auto taxv = _mm256_load_si256((__m256i*)&l->l_tax[i]);
+
+			auto actual_pcntX100 = _mm256_sub_epi32(_100s, discountv);
+			auto discounted_pricesX100 = _mm256_mullo_epi32(pricev, actual_pcntX100);
+			auto tax_pcntX100 = _mm256_add_epi32(_100s, taxv);
+			auto taxed_priceX10k = _mm256_mullo_epi32(discounted_pricesX100, tax_pcntX100);
+
+			// go through each result and increment the correct counter or none
+			for (size_t elt = 0; elt < k_vecsize; ++elt) {
+				if (as_array(mask)[elt]) {
+					auto &f = as_array(flagv)[elt];
+					auto &s = as_array(statusv)[elt];
+				    auto &op = out[f][s];
+
+					op.count += 1;
+					op.sum_qt += as_array(quantityv)[elt];
+					op.sum_base_price += as_array(pricev)[elt];
+					op.sum_disc_price += as_array(discounted_pricesX100)[elt];
+					op.sum_charge += as_array(taxed_priceX10k)[elt];
+				}
+			}
+		}
+	}
+
+	for (int f = 0; f < k_flags; ++f) {
+		for (int s = 0; s < k_status; ++s) {
+			out[f][s].sum_disc_price /= 100;
+			out[f][s].sum_charge /= 100;
+		}
+	}
+}
+
+
 void tpch_q1_columnar_double_masked(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
 {
 

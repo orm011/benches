@@ -227,7 +227,6 @@ void tpch_q1_columnar_double_masked_avx128(const LineitemColumnar *l, q1out out[
 	}
 }
 
-
 #define as_array(r) ((int32_t*)(&(r)))
 
 static const size_t k_vecsize = 8;
@@ -276,7 +275,7 @@ void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1out out[k_flags][
 	for (int f = 0; f < k_flags; ++f) {
 		for (int s = 0; s < k_status; ++s) {
 			out[f][s].sum_disc_price /= 100;
-			out[f][s].sum_charge /= 100;
+			out[f][s].sum_charge /= 10000;
 		}
 	}
 }

@@ -515,6 +515,8 @@ void runBench(TaskData *w, int reps, uint16_t cutoff, string variant) {
 		f = tpch_q1_columnar_condstore_direct;
 	} else if (variant == "double_masked_avx128"){
 		f = tpch_q1_columnar_double_masked_avx128;
+	} else if (variant == "cond_avx256") {
+		f = tpch_q1_columnar_cond_avx256;
 	} else {
 		assert(0);
 		return;

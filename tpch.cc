@@ -501,35 +501,44 @@ void generateData (const vector<TaskData>  &l, bool sorted) {
 	}
 }
 
-void runBench(TaskData *w, int reps, uint16_t cutoff, string variant) {
-	void (*f)(const LineitemColumnar *, q1out (*)[2], int) = nullptr;
+typedef void (*variant_t)(const LineitemColumnar *, q1out (*)[2], int);
+#define impl(s) {#s, tpch_q1_columnar_##s}
+map<string, variant_t> g_variants
+{
+	impl(plain),
+	impl(masked_direct),
+	impl(double_masked),
+	impl(condstore_direct),
+	impl(double_masked_avx128),
+	impl(cond_avx256)
+};
 
-	if (variant == "plain"){
-		f = tpch_q1_columnar_plain;
-	} else if (variant == "masked_direct") {
-		f = tpch_q1_columnar_masked_direct;
-	} else if (variant == "double_masked") {
-		f = tpch_q1_columnar_double_masked;
-	} else if (variant == "condstore_direct") {
-		f = tpch_q1_columnar_condstore_direct;
-	} else if (variant == "double_masked_avx128"){
-		f = tpch_q1_columnar_double_masked_avx128;
-	} else if (variant == "cond_avx256") {
-		f = tpch_q1_columnar_cond_avx256;
+variant_t dispatch_function(string variant) {
+	if (g_variants.count(variant) > 0){
+		return g_variants.at(variant);
 	} else {
-		assert(0);
-		return;
+		printf("variant %s not recognized. valid variants:\n", variant.c_str());
+		for (auto &p : g_variants){
+			printf("%s, ", p.first.c_str());
+		}
+		printf("\n");
+		exit(1);
 	}
+}
 
+
+void runBench(TaskData *w, int reps, uint16_t cutoff, string variant) {
+	auto f= dispatch_function(variant);
 	const q1out zeroed[k_flags][k_status]  {};
 	q1out ans[k_flags][k_status] {};
 	for (int i = 0; i < reps; ++i) {
 		copy_groups(ans, zeroed);
-		(*f)(&w->data, ans, cutoff);
+		f(&w->data, ans, cutoff);
 	}
 
 	copy_groups(w->ans, ans);
 	return;
+
 }
 
 int main(int ac, char** av){

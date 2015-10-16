@@ -94,6 +94,14 @@ short date_of(int yr, int month, int day){
 static const int k_flags = 3;
 static const int k_status = 2;
 
+void copy_groups(q1out dst[][k_status], const q1out src[][k_status]) {
+	for (int f = 0; f < k_flags; ++f) {
+		for (int s = 0; s < k_status; ++s) {
+			dst[f][s] = src[f][s];
+		}
+	}
+}
+
 struct LineitemColumnar {
 	LineitemColumnar() = default;
 

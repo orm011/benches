@@ -10,6 +10,8 @@
 using std::ostream;
 
 bool g_verbose = false;
+static const int k_flags = 3;
+static const int k_status = 2;
 
 /*
  *
@@ -58,14 +60,14 @@ inline int64_t sum_lanes_8(const __m256i & vector){
 }
 
 
-template <typename T> struct q1out_template {
+template <typename T> struct q1group_template {
 	T count {};
 	T sum_qt {};
 	T sum_base_price {};
 	T sum_disc_price {};
 	T sum_charge {};
 
-	friend ostream & operator<<(ostream &o, const q1out_template &q) {
+	friend ostream & operator<<(ostream &o, const q1group_template &q) {
 		o << "{ "\
 				<< OUT(q.count)\
 				<< OUT(q.sum_qt) \
@@ -76,7 +78,7 @@ template <typename T> struct q1out_template {
 		return o;
 	}
 
-	q1out_template &operator=(const q1out_template &rhs){
+	q1group_template &operator=(const q1group_template &rhs){
 		count = rhs.count;
 		sum_qt = rhs.sum_qt;
 		sum_base_price = rhs.sum_base_price;
@@ -86,7 +88,7 @@ template <typename T> struct q1out_template {
 		return *this;
 	}
 
-	friend bool operator==(const q1out_template &l, const q1out_template &r) {
+	friend bool operator==(const q1group_template &l, const q1group_template &r) {
 			return l.count == r.count &&
 					l.sum_qt == r.sum_qt &&
 					l.sum_base_price == r.sum_base_price &&
@@ -94,13 +96,27 @@ template <typename T> struct q1out_template {
 					l.sum_charge == r.sum_charge;
 	}
 
-	friend bool operator!=(const q1out_template &l, const q1out_template &r) {
+	friend bool operator!=(const q1group_template &l, const q1group_template &r) {
 		return ! (l == r);
 	}
 };
 
-typedef q1out_template<int64_t> q1out;
-typedef q1out_template<__m256i> q1out_vec;
+typedef q1group_template<int64_t> q1group;
+
+struct group {
+	int f;
+	int s;
+};
+
+vector<group> k_groups = { {0,0}, {0,1}, {1,0}, {1,1}, {2,0}, {2,1} };
+typedef q1group q1result[k_flags][k_status];
+
+void adjust_sums(q1result r) {
+	for (auto  &g : k_groups) {
+		r[g.f][g.s].sum_disc_price /= 100;
+		r[g.f][g.s].sum_charge /= 10000;
+	}
+}
 
 
 /**
@@ -117,10 +133,7 @@ short date_of(int yr, int month, int day){
 	/* 1/128 is 2^12/2^7 = 2^5 = 32. so pct. x% -> ((x * 32) / 100) << 7*/
 }
 
-static const int k_flags = 3;
-static const int k_status = 2;
-
-void copy_groups(q1out dst[][k_status], const q1out src[][k_status]) {
+void copy_groups(q1result dst, const q1result src) {
 	for (int f = 0; f < k_flags; ++f) {
 		for (int s = 0; s < k_status; ++s) {
 			dst[f][s] = src[f][s];
@@ -182,8 +195,14 @@ void tpch_q1_baseline(const word *l, size_t len,  int64_t *out) {
 	}
 }
 
+#define as_array(r) ((int32_t*)(&(r)))
+static const size_t k_vecsize = 8;
+const __m256i _minus1 = _mm256_set1_epi32(0xffffffff);
+const __m256i _100s = _mm256_set1_epi32(100);
+const __m256i _ones = _mm256_set1_epi32(1);
 
-void tpch_q1_columnar_double_masked_avx128(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
+
+void tpch_q1_columnar_double_masked_avx128(const LineitemColumnar *l, q1result out, int cutoff)
 {
 
 	__m128i acc_counts[k_flags][k_status] {};
@@ -249,13 +268,8 @@ void tpch_q1_columnar_double_masked_avx128(const LineitemColumnar *l, q1out out[
 	}
 }
 
-#define as_array(r) ((int32_t*)(&(r)))
-static const size_t k_vecsize = 8;
-const __m256i _minus1 = _mm256_set1_epi32(0xffffffff);
-const __m256i _100s = _mm256_set1_epi32(100);
-const __m256i _ones = _mm256_set1_epi32(1);
 
-void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
+void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int cutoff)
 {
 	__m256i cutoffv = _mm256_set1_epi32(cutoff);
 
@@ -295,16 +309,11 @@ void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1out out[k_flags][
 		}
 	}
 
-	for (int f = 0; f < k_flags; ++f) {
-		for (int s = 0; s < k_status; ++s) {
-			out[f][s].sum_disc_price /= 100;
-			out[f][s].sum_charge /= 10000;
-		}
-	}
+	adjust_sums(out);
 }
 
-void tpch_q1_columnar_clustered_avx256(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff) {
-	q1out_template<__m256i> accs[k_flags][k_status] {};
+void tpch_q1_columnar_clustered_avx256(const LineitemColumnar *l, q1result out, int cutoff) {
+	q1group_template<__m256i> accs[k_flags][k_status] {};
 	__m256i cutoffv = _mm256_set1_epi32(cutoff);
 	int32_t currentflag = 0;
 	int32_t currentstatus = 0;
@@ -354,17 +363,8 @@ void tpch_q1_columnar_clustered_avx256(const LineitemColumnar *l, q1out out[k_fl
 	}	// merge accs.
 }
 
-void tpch_q1_columnar_double_masked(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
+void tpch_q1_columnar_double_masked(const LineitemColumnar *l, q1result out, int cutoff)
 {
-
-	int32_t acc_counts[k_flags][k_status] {};
-	int32_t acc_quantity[k_flags][k_status] {};
-
-	int32_t maskfs {};
-	int64_t acc_baseprice[k_flags][k_status] {};
-	int64_t acc_discounted[k_flags][k_status] {};
-	int64_t acc_disctax[k_flags][k_status] {};
-
 	for ( size_t i = 0; i < l->len; i+=1 ) {
 		auto mask = (l->l_shipdate[i] <= cutoff) ? 0xffffffff : 0;
 		auto &flag = l->l_returnflag[i];
@@ -372,120 +372,74 @@ void tpch_q1_columnar_double_masked(const LineitemColumnar *l, q1out out[k_flags
 
 		for (int f = 0; f < k_flags; ++f) {
 			for (int s = 0; s < k_status; ++s) {
-				maskfs = (mask && (flag == f) && (status == s)) ? 0xffffffff : 0;
-				acc_counts[f][s] += (maskfs & 1);
-				acc_quantity[f][s] += (maskfs & l->l_quantity[i]);
-				acc_baseprice[f][s] += (maskfs & l->l_extendedprice[i]);
+				auto & op = out[f][s];
+				int32_t maskfs = (mask && (flag == f) && (status == s)) ? 0xffffffff : 0;
+
+				op.count += (maskfs & 1);
+				op.sum_qt += (maskfs & l->l_quantity[i]);
+				op.sum_base_price += (maskfs & l->l_extendedprice[i]);
 				auto discounted = (maskfs & (l->l_extendedprice[i] * (100 - l->l_discount[i])));
-				acc_discounted[flag][status] += discounted;
-				acc_disctax[flag][status]  +=  discounted * (100 + l->l_tax[i]);
+				op.sum_disc_price += discounted;
+				op.sum_charge  +=  discounted * (100 + l->l_tax[i]);
 			}
 		}
 	}
 
-	for (int flag = 0; flag < k_flags; flag++) {
-	  for (int status = 0; status < k_status; status++) {
-	    auto & op = out[flag][status];
-	    op.sum_base_price = acc_baseprice[flag][status];
-	    op.sum_qt = acc_quantity[flag][status];
-	    op.sum_disc_price= acc_discounted[flag][status]/100;
-	    op.sum_charge = acc_disctax[flag][status]/10000;
-	    op.count = acc_counts[flag][status];
-
-	  }
-	}
+	adjust_sums(out);
 }
 
 
-
-
-void tpch_q1_columnar_condstore_direct(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
+void tpch_q1_columnar_condstore_direct(const LineitemColumnar *l, q1result out, int cutoff)
 {
-
-	int32_t acc_counts[k_flags][k_status] {};
-	int32_t acc_quantity[k_flags][k_status] {};
-
-	int64_t acc_baseprice[k_flags][k_status] {};
-	int64_t acc_discounted[k_flags][k_status] {};
-	int64_t acc_disctax[k_flags][k_status] {};
-
 	for ( size_t i = 0; i < l->len; i+=1 ) {
 		auto &flag = l->l_returnflag[i];
 		auto &status = l->l_linestatus[i];
+	    auto & op = out[flag][status];
 
 		auto mask = (l->l_shipdate[i] <= cutoff);
 
 		int32_t count = mask ? 1 : 0;
-		acc_counts[flag][status] += count;
+		op.count  += count;
 
 		int32_t quant = mask ? l->l_quantity[i] : 0;
-		acc_quantity[flag][status] += quant;
+		op.sum_qt  += quant;
 
 		int32_t basepr = mask ? l->l_extendedprice[i] : 0;
-		acc_baseprice[flag][status] += basepr;
+		op.sum_base_price  += basepr;
 
 		int discounted = mask ? (l->l_extendedprice[i] * (100 - l->l_discount[i])) : 0;
-		acc_discounted[flag][status] += discounted;
+		op.sum_disc_price += discounted;
 
 		int taxed = mask ? (discounted * (100 + l->l_tax[i])) : 0;
-		acc_disctax[flag][status] += taxed;
+		op.sum_charge  += taxed;
 	}
 
-
-	for (int flag = 0; flag < k_flags; flag++) {
-	  for (int status = 0; status < k_status; status++) {
-	    auto & op = out[flag][status];
-	    op.sum_base_price = acc_baseprice[flag][status];
-	    op.sum_qt = acc_quantity[flag][status];
-	    op.sum_disc_price= acc_discounted[flag][status]/100;
-	    op.sum_charge = acc_disctax[flag][status]/10000;
-	    op.count = acc_counts[flag][status];
-
-	  }
-	}
+	adjust_sums(out);
 }
 
 
-void tpch_q1_columnar_masked_direct(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
+void tpch_q1_columnar_masked_direct(const LineitemColumnar *l, q1result out, int cutoff)
 {
-	int32_t acc_counts[k_flags][k_status] {};
-	int32_t acc_quantity[k_flags][k_status] {};
-
-	int64_t acc_baseprice[k_flags][k_status] {};
-	int64_t acc_discounted[k_flags][k_status] {};
-	int64_t acc_disctax[k_flags][k_status] {};
 
 	for ( size_t i = 0; i < l->len; i+=1 ) {
 		auto &flag = l->l_returnflag[i];
 		auto &status = l->l_linestatus[i];
+	    auto & op = out[flag][status];
 
 		auto mask = (l->l_shipdate[i] <= cutoff) ? 0xffffffff : 0;
-
-		acc_counts[flag][status] += mask & 1;
-		acc_quantity[flag][status] += mask & l->l_quantity[i];
-		acc_baseprice[flag][status] += mask & l->l_extendedprice[i];
-
+		op.count += mask & 1;
+		op.sum_qt += mask & l->l_quantity[i];
+		op.sum_base_price += mask & l->l_extendedprice[i];
 		int discounted = (l->l_extendedprice[i] * (100 - l->l_discount[i]));
-		acc_discounted[flag][status] += mask & discounted;
+		op.sum_disc_price += mask & discounted;
 		int taxed = (discounted * (100 + l->l_tax[i]));
-		acc_disctax[flag][status] += mask & taxed;
+		op.sum_charge += mask & taxed;
 	}
 
-
-	for (int flag = 0; flag < k_flags; flag++) {
-	  for (int status = 0; status < k_status; status++) {
-	    auto & op = out[flag][status];
-	    op.sum_base_price = acc_baseprice[flag][status];
-	    op.sum_qt = acc_quantity[flag][status];
-	    op.sum_disc_price= acc_discounted[flag][status]/100;
-	    op.sum_charge = acc_disctax[flag][status]/10000;
-	    op.count = acc_counts[flag][status];
-	  }
-	}
+	adjust_sums(out);
 }
 
-
-void tpch_q1_columnar_plain(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
+void tpch_q1_columnar_plain(const LineitemColumnar *l, q1result out, int cutoff)
 {
 	for ( size_t i = 0; i < l->len; i+=1 ) {
 		auto &flag = l->l_returnflag[i];
@@ -497,17 +451,19 @@ void tpch_q1_columnar_plain(const LineitemColumnar *l, q1out out[k_flags][k_stat
 		    op.sum_qt += l->l_quantity[i];
 		    op.sum_base_price += l->l_extendedprice[i];
 
-		    int discounted = (l->l_extendedprice[i] * (100 - l->l_discount[i]));;
+		    long int discounted = (l->l_extendedprice[i] * (100 - l->l_discount[i]));;
 		    op.sum_disc_price += discounted;
-		    int taxed = (discounted * (100 + l->l_tax[i]));
+		    long int taxed = (discounted * (100 + l->l_tax[i]));
 		    op.sum_charge += taxed;
 		}
 	}
+
+	adjust_sums(out);
 }
 
 struct TaskData {
 	LineitemColumnar data {};
-	q1out ans[k_flags][k_status] {};
+	q1group ans[k_flags][k_status] {};
 	thread t {};
 	char pad[64] {};
 };
@@ -552,7 +508,7 @@ void generateData (const vector<TaskData>  &l, bool sorted) {
 	}
 }
 
-typedef void (*variant_t)(const LineitemColumnar *, q1out (*)[2], int);
+typedef void (*variant_t)(const LineitemColumnar *, q1group (*)[2], int);
 #define impl(s) {#s, tpch_q1_columnar_##s}
 map<string, variant_t> g_variants
 {
@@ -705,7 +661,7 @@ int main(int ac, char** av){
 		}
 	}
 
-	q1out ref_answer[k_flags][k_status] {};
+	q1group ref_answer[k_flags][k_status] {};
 
 	for (auto &variant : variants){
 	auto f = dispatch_function(variant);
@@ -724,7 +680,7 @@ int main(int ac, char** av){
 	for (auto threads : threadlevels) {
 
 		auto task = [](TaskData *w, int cutoff, variant_t f) {
-			q1out ans[k_flags][k_status] {}; //ensure outputs are read written in the stack. (assuming there is no false sharin then)
+			q1group ans[k_flags][k_status] {}; //ensure outputs are read written in the stack. (assuming there is no false sharin then)
 			f(&w->data, ans, cutoff);
 			copy_groups(w->ans, ans);
 		};

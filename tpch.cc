@@ -38,14 +38,34 @@ l_linestatus;
 #define OUT(x) #x << ": " << x << " "
 
 
-struct q1out {
-	int64_t count {};
-	int64_t sum_qt {};
-	int64_t sum_base_price {};
-	int64_t sum_disc_price {};
-	int64_t sum_charge {};
+inline int64_t sum_lanes(const __m128i & vector){
+	int64_t total = 0;
+	const int32_t *p = (int32_t*)&vector;
+	for (int lane = 0; lane < 4; ++lane) {
+		total += p[lane];
+	}
 
-	friend ostream & operator<<(ostream &o, const q1out &q) {
+	return total;
+}
+
+inline int64_t sum_lanes_8(const __m256i & vector){
+	int64_t total = 0;
+	const int32_t *p = (int32_t*)&vector;
+	for (int lane = 0; lane < 8; ++lane) {
+		total += p[lane];
+	}
+	return total;
+}
+
+
+template <typename T> struct q1out_template {
+	T count {};
+	T sum_qt {};
+	T sum_base_price {};
+	T sum_disc_price {};
+	T sum_charge {};
+
+	friend ostream & operator<<(ostream &o, const q1out_template &q) {
 		o << "{ "\
 				<< OUT(q.count)\
 				<< OUT(q.sum_qt) \
@@ -56,7 +76,7 @@ struct q1out {
 		return o;
 	}
 
-	q1out &operator=(const q1out &rhs){
+	q1out_template &operator=(const q1out_template &rhs){
 		count = rhs.count;
 		sum_qt = rhs.sum_qt;
 		sum_base_price = rhs.sum_base_price;
@@ -66,7 +86,7 @@ struct q1out {
 		return *this;
 	}
 
-	friend bool operator==(const q1out &l, const q1out &r) {
+	friend bool operator==(const q1out_template &l, const q1out_template &r) {
 			return l.count == r.count &&
 					l.sum_qt == r.sum_qt &&
 					l.sum_base_price == r.sum_base_price &&
@@ -74,10 +94,13 @@ struct q1out {
 					l.sum_charge == r.sum_charge;
 	}
 
-	friend bool operator!=(const q1out &l, const q1out &r) {
+	friend bool operator!=(const q1out_template &l, const q1out_template &r) {
 		return ! (l == r);
 	}
 };
+
+typedef q1out_template<int64_t> q1out;
+typedef q1out_template<__m256i> q1out_vec;
 
 
 /**
@@ -159,15 +182,6 @@ void tpch_q1_baseline(const word *l, size_t len,  int64_t *out) {
 	}
 }
 
-inline int32_t sum_lanes(const __m128i & vector){
-	int32_t total = 0;
-	const int32_t *p = (int32_t*)&vector;
-	for (int lane = 0; lane < 4; ++lane) {
-		total += p[lane];
-	}
-
-	return total;
-}
 
 void tpch_q1_columnar_double_masked_avx128(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
 {
@@ -236,13 +250,14 @@ void tpch_q1_columnar_double_masked_avx128(const LineitemColumnar *l, q1out out[
 }
 
 #define as_array(r) ((int32_t*)(&(r)))
-
 static const size_t k_vecsize = 8;
+const __m256i _minus1 = _mm256_set1_epi32(0xffffffff);
+const __m256i _100s = _mm256_set1_epi32(100);
+const __m256i _ones = _mm256_set1_epi32(1);
+
 void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
 {
 	__m256i cutoffv = _mm256_set1_epi32(cutoff);
-	__m256i _minus1 = _mm256_set1_epi32(0xffffffff);
-	__m256i _100s = _mm256_set1_epi32(100);
 
 	for ( size_t i = 0; i < l->len; i+= k_vecsize) {
 		auto datev = _mm256_load_si256((__m256i*)&l->l_shipdate[i]);
@@ -288,6 +303,56 @@ void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1out out[k_flags][
 	}
 }
 
+void tpch_q1_columnar_clustered_avx256(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff) {
+	q1out_template<__m256i> accs[k_flags][k_status] {};
+	__m256i cutoffv = _mm256_set1_epi32(cutoff);
+	int32_t currentflag = 0;
+	int32_t currentstatus = 0;
+
+	for ( size_t i = 0; i < l->len; i += k_vecsize) {
+	auto datev = _mm256_load_si256((__m256i*)&l->l_shipdate[i]);
+	auto compgt = _mm256_cmpgt_epi32(datev, cutoffv);
+	auto mask = _mm256_xor_si256(compgt, _minus1);
+
+	if (!_mm256_testz_si256(mask, mask)) { // may want to remove for high selectivity
+		currentflag = l->l_returnflag[i];
+		currentstatus = l->l_linestatus[i];
+
+		auto quantityv = _mm256_load_si256((__m256i*)&l->l_quantity[i]);
+		auto pricev = _mm256_load_si256((__m256i*)&l->l_extendedprice[i]);
+		auto discountv = _mm256_load_si256((__m256i*)&l->l_discount[i]);
+		auto taxv = _mm256_load_si256((__m256i*)&l->l_tax[i]);
+
+		auto actual_pcntX100 = _mm256_sub_epi32(_100s, discountv);
+		auto discounted_pricesX100 = _mm256_mullo_epi32(pricev, actual_pcntX100);
+		auto tax_pcntX100 = _mm256_add_epi32(_100s, taxv);
+		auto taxed_priceX10k = _mm256_mullo_epi32(discounted_pricesX100, tax_pcntX100);
+
+		auto &op = accs[currentflag][currentstatus];
+
+		op.count = _mm256_add_epi32(op.count, _ones);
+		op.sum_qt = _mm256_add_epi32(op.sum_qt, quantityv);
+		op.sum_base_price = _mm256_add_epi32(op.sum_base_price, pricev);
+		op.sum_disc_price = _mm256_add_epi32(op.sum_disc_price, discounted_pricesX100);
+		op.sum_charge = _mm256_add_epi32(op.sum_charge, taxed_priceX10k);
+	}
+	}
+
+
+	for (int f = 0; f < k_flags; ++f) {
+		for (int s = 0; s < k_status; ++s) {
+			for (size_t v = 0; v < k_vecsize; ++v) {
+				as_array(accs[f][s].sum_disc_price)[v] /= 100;
+				as_array(accs[f][s].sum_charge)[v] /= 10000;
+			}
+			out[f][s].count = sum_lanes_8(accs[f][s].count);
+			out[f][s].sum_qt = sum_lanes_8(accs[f][s].sum_qt);
+			out[f][s].sum_base_price= sum_lanes_8(accs[f][s].sum_base_price);
+			out[f][s].sum_disc_price = sum_lanes_8(accs[f][s].sum_disc_price);
+			out[f][s].sum_charge = sum_lanes_8(accs[f][s].sum_charge);
+		}
+	}	// merge accs.
+}
 
 void tpch_q1_columnar_double_masked(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
 {
@@ -422,40 +487,21 @@ void tpch_q1_columnar_masked_direct(const LineitemColumnar *l, q1out out[k_flags
 
 void tpch_q1_columnar_plain(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
 {
-	int32_t acc_counts[k_flags][k_status] {};
-	int32_t acc_quantity[k_flags][k_status] {};
-
-	int64_t acc_baseprice[k_flags][k_status] {};
-	int64_t acc_discounted[k_flags][k_status] {};
-	int64_t acc_disctax[k_flags][k_status] {};
-
 	for ( size_t i = 0; i < l->len; i+=1 ) {
 		auto &flag = l->l_returnflag[i];
 		auto &status = l->l_linestatus[i];
 
 		if (l->l_shipdate[i] <= cutoff) {
-				acc_counts[flag][status] += 1;
-				acc_quantity[flag][status] += l->l_quantity[i];
-				acc_baseprice[flag][status] += l->l_extendedprice[i];
+		    auto & op = out[flag][status];
+		    op.count += 1;
+		    op.sum_qt += l->l_quantity[i];
+		    op.sum_base_price += l->l_extendedprice[i];
 
-				int discounted = (l->l_extendedprice[i] * (100 - l->l_discount[i]));
-				acc_discounted[flag][status] += discounted;
-				int taxed = (discounted * (100 + l->l_tax[i]));
-				acc_disctax[flag][status] += taxed;
+		    int discounted = (l->l_extendedprice[i] * (100 - l->l_discount[i]));;
+		    op.sum_disc_price += discounted;
+		    int taxed = (discounted * (100 + l->l_tax[i]));
+		    op.sum_charge += taxed;
 		}
-	}
-
-
-	for (int flag = 0; flag < k_flags; flag++) {
-	  for (int status = 0; status < k_status; status++) {
-	    auto & op = out[flag][status];
-	    op.sum_base_price = acc_baseprice[flag][status];
-	    op.sum_qt = acc_quantity[flag][status];
-	    op.sum_disc_price= acc_discounted[flag][status]/100;
-	    op.sum_charge = acc_disctax[flag][status]/10000;
-	    op.count = acc_counts[flag][status];
-
-	  }
 	}
 }
 
@@ -515,7 +561,8 @@ map<string, variant_t> g_variants
 	impl(double_masked),
 	impl(condstore_direct),
 	impl(double_masked_avx128),
-	impl(cond_avx256)
+	impl(cond_avx256),
+	impl(clustered_avx256)
 };
 
 variant_t dispatch_function(string variant) {
@@ -698,9 +745,9 @@ int main(int ac, char** av){
 			}
 
 		} else {
-
 			for (int i = 0; i < k_flags; ++i) {
 				for (int j = 0; j < k_status; ++j) {
+					selected_count += task_data[0].ans[i][j].count;
 					if (ref_answer[i][j] != task_data[0].ans[i][j]){
 						cerr << "WARNING: output mismatch with plain implementation found at l_linestatus: "
 								<< j << " l_returnflag: " << i << endl;

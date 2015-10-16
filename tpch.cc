@@ -526,21 +526,6 @@ variant_t dispatch_function(string variant) {
 	}
 }
 
-
-void runBench(TaskData *w, int reps, uint16_t cutoff, string variant) {
-	auto f= dispatch_function(variant);
-	const q1out zeroed[k_flags][k_status]  {};
-	q1out ans[k_flags][k_status] {};
-	for (int i = 0; i < reps; ++i) {
-		copy_groups(ans, zeroed);
-		f(&w->data, ans, cutoff);
-	}
-
-	copy_groups(w->ans, ans);
-	return;
-
-}
-
 int main(int ac, char** av){
 	po::options_description desc("Allowed options");
 	vector<int> selectivities  {90};
@@ -600,11 +585,20 @@ int main(int ac, char** av){
 	q1out ref_answer[k_flags][k_status] {};
 
 	for (auto &variant : variants){
+	auto f = dispatch_function(variant);
 	for (auto selectivity : selectivities) {
 	int cutoff = ((selectivity * (1 << 12))/ 100); // warning: careful with small values.
+	for (int repno = 0; repno < reps; ++repno) {
 	for (auto threads : threadlevels) {
+
+		auto task = [](TaskData *w, int cutoff, variant_t f) {
+			q1out ans[k_flags][k_status] {}; //ensure outputs are read written in the stack. (assuming there is no false sharin then)
+			f(&w->data, ans, cutoff);
+			copy_groups(w->ans, ans);
+		};
+
 		auto before = clk::now();
-		for (auto & w : task_data){ w.t = thread(runBench, &w, reps, cutoff, variant); }
+		for (auto & w : task_data){ w.t = thread(task, &w, cutoff, f); }
 		auto between = clk::now();
 		for (auto & w : task_data) { w.t.join(); }
 		auto after = clk::now();
@@ -650,6 +644,7 @@ int main(int ac, char** av){
 		if (first) { bo.display_param_names(); }
 		bo.display_param_values();
 		first = false;
+	}
 	}
 	}
 	}

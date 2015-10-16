@@ -522,10 +522,15 @@ void runBench(TaskData *w, int reps, uint16_t cutoff, string variant) {
 		return;
 	}
 
+	const q1out zeroed[k_flags][k_status]  {};
+	q1out ans[k_flags][k_status] {};
 	for (int i = 0; i < reps; ++i) {
-		memset(&w->ans, 0, sizeof(w->ans));
-		(*f)(&w->data, w->ans, cutoff);
+		copy_groups(ans, zeroed);
+		(*f)(&w->data, ans, cutoff);
 	}
+
+	copy_groups(w->ans, ans);
+	return;
 }
 
 int main(int ac, char** av){

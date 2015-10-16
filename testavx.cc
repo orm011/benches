@@ -48,7 +48,7 @@ void printvector(const char * name, __m256i & v){
 	printf("%s:\t%d %d %d %d %d %d %d %d\n", name, vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7]);
 }
 
-#define DISPLAYVEC(v) printvector(#v, v)
+#define DISPLAY(v) printvector(#v, v)
 
 
 void avx256gather() {
@@ -57,29 +57,32 @@ void avx256gather() {
 		base[i] = i;
 	}
 
+
 	__m256i pos = _mm256_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7);
 	__m256i pos2 = _mm256_set_epi32(0, 1, 2, 3, 4, 5, 6, 7);
 
 	__m256i res1 = _mm256_i32gather_epi32(base, pos, 4);
 	__m256i res1rev = _mm256_i32gather_epi32(base, pos2, 4);
 	__m256i res2 = _mm256_i32gather_epi32(base, pos, 4);
-	DISPLAYVEC(res1);
-	DISPLAYVEC(res1rev);
-	DISPLAYVEC(res2);
+	DISPLAY(res1);
+	DISPLAY(res1rev);
+	DISPLAY(res2);
 
-	const int32_t ffs = 0xffffffff;
-	__m256i mask = _mm256_set_epi32(0,ffs,0,ffs,0,ffs,0,ffs);
+	__m256i mask = _mm256_set_epi32(0,-1,0,-1,0,-1,0,-1);
 	__m256i source = _mm256_set_epi32(50, 50, 50, 50, 50, 50, 50, 50);
 	__m256i res_mask = _mm256_mask_i32gather_epi32(source, base, pos, mask, 1);
-	DISPLAYVEC(res_mask);
+	DISPLAY(res_mask);
 
 	__m256i permutation = _mm256_set_epi32(1,0,3,2,5,4,7,6);
 	__m256i permutation2 = _mm256_set_epi32(0,0,1,1,2,2,3,3); // not really a perm
-
 	auto permres = _mm256_permutevar8x32_epi32(*(__m256i*)base, permutation);
 	auto perm2res = _mm256_permutevar8x32_epi32(*(__m256i*)base, permutation2);
-	DISPLAYVEC(permres);
-	DISPLAYVEC(perm2res);
+	DISPLAY(permres);
+	DISPLAY(perm2res);
+
+	__m256i beforemask = _mm256_set_epi32(-1, 1, -1, 1, -1, 1, -1, 1); //0000 0000 1010 1010. -> 00aa.
+	auto aftermask = _mm256_movemask_ps(_mm256_castsi256_ps(beforemask));
+	printf("aftermask: %x\n", aftermask);
 }
 
 void compare() {
@@ -99,7 +102,6 @@ void compare() {
 	int32_t * res2 = reinterpret_cast<int32_t *>(&res);
 	printf("%x %x %x %x\n", res2[0], res2[1], res2[2], res2[3]);
 }
-
 
 int main() {
 	avx256gather();

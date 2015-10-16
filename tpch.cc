@@ -4,9 +4,12 @@
 #include <ostream>
 #include "common.h"
 #include "immintrin.h"
+#include <error.h>
+#include <stdio.h>
 
 using std::ostream;
 
+bool g_verbose = false;
 
 /*
  *
@@ -108,18 +111,23 @@ struct LineitemColumnar {
 	LineitemColumnar(size_t len) : len(len) {
 		l_shipdate = allocate<int32_t>(len);
 		l_quantity = allocate<int32_t>(len);
-		l_extendedprice = allocate<int32_t>(len);
+		l_extendedprice = allocate<int64_t>(len);
 		l_discount = allocate<int32_t>(len); /*0.00 to 100.00*/
 		l_tax = allocate<int32_t>(len); /*0.00 to 100.00*/
 		l_returnflag = allocate<int32_t>(len); /* 2 values*/
 		l_linestatus = allocate<int32_t>(len); /* 3 values*/
 	}
 
+	void printitem(size_t i) {
+		printf("%d %ld %d %d %d %d %d\n",
+				l_quantity[i], l_extendedprice[i], l_discount[i], l_tax[i], l_returnflag[i], l_linestatus[i], l_shipdate[i]);
+	}
+
 	word w1 {};
 	size_t len {};
 	int32_t *l_shipdate {}; //where
 	int32_t *l_quantity {};
-	int32_t *l_extendedprice {};
+	int64_t *l_extendedprice {};
 	int32_t *l_discount {};
 	int32_t *l_tax {};
 	int32_t *l_returnflag {};
@@ -375,7 +383,6 @@ void tpch_q1_columnar_condstore_direct(const LineitemColumnar *l, q1out out[k_fl
 
 void tpch_q1_columnar_masked_direct(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
 {
-
 	int32_t acc_counts[k_flags][k_status] {};
 	int32_t acc_quantity[k_flags][k_status] {};
 
@@ -413,10 +420,8 @@ void tpch_q1_columnar_masked_direct(const LineitemColumnar *l, q1out out[k_flags
 }
 
 
-
 void tpch_q1_columnar_plain(const LineitemColumnar *l, q1out out[k_flags][k_status], int cutoff)
 {
-
 	int32_t acc_counts[k_flags][k_status] {};
 	int32_t acc_quantity[k_flags][k_status] {};
 
@@ -487,7 +492,7 @@ void generateData (const vector<TaskData>  &l, bool sorted) {
 		_Cilk_for (int item = 0; item < len; ++item) {
 			int s = c.get();
 			l[vec].data.l_quantity[item] = MarsagliaXOR(&s) % 100;
-			l[vec].data.l_extendedprice[item] = MarsagliaXOR(&s) % 1000 + 100;
+			l[vec].data.l_extendedprice[item] = MarsagliaXOR(&s) % 100 + 100;
 			l[vec].data.l_discount[item] = MarsagliaXOR(&s) % 40 + 1;
 			l[vec].data.l_tax[item] = MarsagliaXOR(&s) % 10 + 1;
 			l[vec].data.l_returnflag[item] = MarsagliaXOR(&s) % 3;
@@ -526,9 +531,61 @@ variant_t dispatch_function(string variant) {
 	}
 }
 
+LineitemColumnar from_file(string filename, size_t lines) {
+	auto *f = fopen(filename.c_str(), "r");
+	if (!f) {
+		error(1, errno, "failed at fopen");
+	}
+
+	LineitemColumnar ans(lines);
+	size_t pos = 0;
+
+	size_t buf_size = 100;
+	auto buf = (char*)malloc(buf_size);
+	long int readline_result = 0;
+
+	while ((readline_result = getline(&buf, &buf_size, f)) > 0 && pos < lines) {
+
+		buf[readline_result] = '\0'; // null terminate for sscanf
+		int sscanf_result  = sscanf(buf, "%d %ld %d %d %d %d %d\n",
+				&ans.l_quantity[pos],
+				&ans.l_extendedprice[pos],
+				&ans.l_discount[pos],
+				&ans.l_tax[pos],
+				&ans.l_returnflag[pos],
+				&ans.l_linestatus[pos],
+				&ans.l_shipdate[pos]);
+		if (sscanf_result < 7 || sscanf_result == EOF) {
+			auto errnum = errno;
+			error(1, errnum, "failed at sscanf.");
+		}
+
+		++pos;
+	}
+
+	free(buf);
+
+	if (pos >= lines) {
+		printf("Ran out of space for file contents!\n");
+		exit(1);
+	} else {
+		auto errnum = errno;
+		if (errnum) { error(1, errnum, "failed at getline."); }
+	}
+
+	if (g_verbose) {
+		for (size_t i = 0; i < lines && i < 10; ++i){
+			ans.printitem(i); // debug.
+		}
+	}
+
+	ans.len = pos; //set it to actual length.
+	return ans;
+}
+
 int main(int ac, char** av){
 	po::options_description desc("Allowed options");
-	vector<int> selectivities  {90};
+	vector<uint32_t> selectivities  {90};
 	vector<int> threadlevels {1,2};
 	vector<string> input_variants {"plain"};
 
@@ -537,10 +594,14 @@ int main(int ac, char** av){
 		("threadlevels", po::value<vector<int>>()->multitoken()->default_value(threadlevels, "1, 2"), "different numbers of threads to try")
 	    ("items", po::value<int>()->default_value(1024), "items in lineitem")
 	    ("reps", po::value<int>()->default_value(1), "number of repetitions")
-		("selectivities", po::value<vector<int>>()->multitoken()->default_value(selectivities, "10, 90"), "from 1 to 100, percentage of tuples that qualify.")
+		("selectivities", po::value<vector<uint32_t>>()->multitoken()->default_value(selectivities, "10, 90"), "from 1 to 100, percentage of tuples that qualify.")
 		("sorted", po::value<bool>()->default_value(true), "0 to leave data in position, or 1 to sort workload by shipdate")
 		("results", po::value<bool>()->default_value(false), "0 hides results for the last run of the first thread, 1 shows them")
-		("variants", po::value<vector<string>>()->multitoken()->default_value(input_variants, "{plain}"), "variant to use");
+		("variants", po::value<vector<string>>()->multitoken()->default_value(input_variants, "{plain}"), "variant to use")
+		("file", po::value<string>(), "dont generate. instead load data from file in format: qty eprice discount tax rflag lstatus sdate. all are ints")
+		("verbose", po::value<bool>()->default_value(false), "verbose")
+		("lines", po::value<int>(), "upper bound on lines in file")
+		("cutoff", po::value<int>()->default_value(17500), "cutoff for file loaded date");
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(ac, av, desc), vm);
@@ -551,9 +612,11 @@ int main(int ac, char** av){
 	    return 1;
 	}
 
+	g_verbose = vm["verbose"].as<bool>();
+
 	int items = vm["items"].as<int>();
 	int reps = vm["reps"].as<int>();
-	selectivities = vm["selectivities"].as<vector<int>>();
+	selectivities = vm["selectivities"].as<vector<uint32_t>>();
 	vm.erase("selectivities");
 	threadlevels = vm["threadlevels"].as<vector<int>>();
 	assert(threadlevels.size() > 0);
@@ -570,7 +633,20 @@ int main(int ac, char** av){
 			task_data[i].data = LineitemColumnar(items);
 	}
 
-	generateData(task_data, sorted);
+	if (vm.count("file") > 0) {
+		if (vm.count("lines") == 0) {
+			printf("If file is given, then lines must be given\n");
+			exit(1);
+		} else {
+			task_data[0].data = from_file(vm["file"].as<string>(), (size_t)vm["lines"].as<int>());
+			if (task_data.size() > 1) {
+				printf("Not supporing multi core for data from file yet\n");
+				exit(1);
+			}
+		}
+	} else {
+		generateData(task_data, sorted);
+	}
 
 	BenchmarkOutput bo(vm);
 	bool first = true;
@@ -587,7 +663,16 @@ int main(int ac, char** av){
 	for (auto &variant : variants){
 	auto f = dispatch_function(variant);
 	for (auto selectivity : selectivities) {
-	int cutoff = ((selectivity * (1 << 12))/ 100); // warning: careful with small values.
+		uint32_t cutoff;
+		if (!vm.count("file")){
+			 cutoff= ((selectivity * (1 << 12))/ 100); // warning: careful with small values.
+		} else {
+			cutoff = vm["cutoff"].as<int>();
+			if (selectivities.size() > 1){
+				printf("WARNING: when cutoff is given, selectivites should not\n");
+				exit(1);
+			}
+		}
 	for (int repno = 0; repno < reps; ++repno) {
 	for (auto threads : threadlevels) {
 
@@ -603,12 +688,15 @@ int main(int ac, char** av){
 		for (auto & w : task_data) { w.t.join(); }
 		auto after = clk::now();
 
+		size_t selected_count = 0;
 		if (first) {
 			for (int i = 0; i < k_flags; ++i) {
 				for (int j = 0 ;  j < k_status; ++j) {
 					ref_answer[i][j] = task_data[0].ans[i][j];
+					selected_count += task_data[0].ans[i][j].count;
 				}
 			}
+
 		} else {
 
 			for (int i = 0; i < k_flags; ++i) {
@@ -631,9 +719,14 @@ int main(int ac, char** av){
 			}
 		}
 
-		ADD(bo, selectivity);
+		int actual_selectivity =  selected_count * 100 / task_data[0].data.len;
+		int actual_lines = task_data[0].data.len;
+
+		ADD(bo, actual_lines);
+		ADD(bo, actual_selectivity);
 		ADD(bo, threads);
 		ADD(bo, variant);
+
 
 		auto time_millis = duration_millis(before, after);
 		ADD(bo, time_millis);

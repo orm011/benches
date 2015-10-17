@@ -669,12 +669,12 @@ int main(int ac, char** av){
 				bool error_found = false;
 				selected_count += task_data[0].ans[i][j].count;
 				if (task_data[0].ans[i][j].sum_base_price < task_data[0].ans[i][j].sum_disc_price) {
-					cerr << "WARNING: base price less than discount prices";
+					cerr << "WARNING: base price less than discount prices" << endl;
 					error_found = true;
 				}
 
 				if (task_data[0].ans[i][j].sum_disc_price > task_data[0].ans[i][j].sum_charge) {
-					cerr << "WARNING: discount price larger than after-tax price";
+					cerr << "WARNING: discount price larger than after-tax price" << endl;
 					error_found = true;
 				}
 
@@ -684,7 +684,7 @@ int main(int ac, char** av){
 				}
 
 				if (ref_answer[i][j] != task_data[0].ans[i][j]) {
-					cerr << "WARNING: output mismatch with plain plan.";
+					cerr << "WARNING: output mismatch with plain plan." << endl;
 					error_found = true;
 				}
 

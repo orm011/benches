@@ -40,16 +40,6 @@ l_linestatus;
 #define OUT(x) #x << ": " << x << " "
 
 
-inline int64_t sum_lanes(const __m128i & vector){
-	int64_t total = 0;
-	const int32_t *p = (int32_t*)&vector;
-	for (int lane = 0; lane < 4; ++lane) {
-		total += p[lane];
-	}
-
-	return total;
-}
-
 inline int64_t sum_lanes_8(const __m256i & vector){
 	int64_t total = 0;
 	const int32_t *p = (int32_t*)&vector;
@@ -201,71 +191,65 @@ const __m256i _minus1 = _mm256_set1_epi32(0xffffffff);
 const __m256i _100s = _mm256_set1_epi32(100);
 const __m256i _ones = _mm256_set1_epi32(1);
 
-
-void tpch_q1_columnar_double_masked_avx128(const LineitemColumnar *l, q1result out, int cutoff)
-{
-
-	__m128i acc_counts[k_flags][k_status] {};
-	__m128i acc_quantity[k_flags][k_status] {};
-	__m128i acc_baseprice[k_flags][k_status] {};
-	__m128i acc_discounted[k_flags][k_status] {};
-	__m128i acc_disctax[k_flags][k_status] {};
-
-	__m128i cutoffv = _mm_set1_epi32(cutoff);
-
-	__m128i _minus1 = _mm_set1_epi32(0xffffffff);
-	__m128i _1s = _mm_set1_epi32(0x1);
-	__m128i _100s = _mm_set1_epi32(100);
-
-	for ( size_t i = 0; i < l->len; i+=4 ) {
-		auto datev = _mm_load_si128((__m128i*)&l->l_shipdate[i]);
-
-		auto compgt = _mm_cmpgt_epi32(datev, cutoffv);
-		auto mask = _mm_xor_si128(compgt, _minus1);
-
-		auto flagv = _mm_load_si128((__m128i*)&l->l_returnflag[i]);
-		auto statusv = _mm_load_si128((__m128i*)&l->l_linestatus[i]);
-		auto quantityv = _mm_load_si128((__m128i*)&l->l_quantity[i]);
-		auto pricev = _mm_load_si128((__m128i*)&l->l_extendedprice[i]);
-		auto discountv = _mm_load_si128((__m128i*)&l->l_discount[i]);
-		auto taxv = _mm_load_si128((__m128i*)&l->l_tax[i]);
-
-		for (int f = 0; f < k_flags; ++f) {
-			auto fv = _mm_set1_epi32(f);
-			auto eqf = _mm_cmpeq_epi32(flagv, fv);
-
-			for (int s = 0; s < k_status; ++s) {
-				auto sv = _mm_set1_epi32(s);
-				auto eqs = _mm_cmpeq_epi32(statusv, sv);
-
-				auto botheqv = _mm_and_si128(eqs, eqf);
-				auto maskfsv = _mm_and_si128(botheqv, mask);
-				acc_counts[f][s] =  _mm_add_epi32(_mm_and_si128(maskfsv, _1s), acc_counts[f][s]);
-				acc_quantity[f][s] = _mm_add_epi32(_mm_and_si128(maskfsv, quantityv), acc_quantity[f][s]);
-				acc_baseprice[f][s] = _mm_add_epi32(_mm_and_si128(maskfsv, pricev), acc_baseprice[f][s]);
-
-				auto actual_pcntX100 = _mm_sub_epi32(_100s, discountv);
-				auto discounted_pricesX100 = _mm_mullo_epi32(pricev, actual_pcntX100);
-				acc_discounted[f][s] = _mm_add_epi32(_mm_and_si128(maskfsv, discounted_pricesX100), acc_discounted[f][s]);
-
-				auto tax_pcntX100 = _mm_add_epi32(_100s, taxv);
-				auto taxed_priceX10k = _mm_mullo_epi32(discounted_pricesX100, tax_pcntX100);
-				acc_disctax[f][s] = _mm_add_epi32(_mm_and_si128(maskfsv, taxed_priceX10k), acc_disctax[f][s]);
-			}
-		}
-	}
-
+void merge_lanes(q1result dst, const q1group_template<__m256i> src[k_flags][k_status]) {
 	for (int flag = 0; flag < k_flags; flag++) {
 	  for (int status = 0; status < k_status; status++) {
-	    auto & op = out[flag][status];
-
-    	op.sum_base_price = sum_lanes(acc_baseprice[flag][status]);
-    	op.sum_qt = sum_lanes(acc_quantity[flag][status]);
-    	op.sum_disc_price= sum_lanes(acc_discounted[flag][status])/100;
-    	op.sum_charge = sum_lanes(acc_disctax[flag][status])/10000;
-    	op.count = sum_lanes(acc_counts[flag][status]);
+	    auto & op = dst[flag][status];
+    	op.sum_base_price = sum_lanes_8(src[flag][status].sum_base_price);
+    	op.sum_qt = sum_lanes_8(src[flag][status].sum_qt);
+    	op.sum_disc_price= sum_lanes_8(src[flag][status].sum_disc_price);
+    	op.sum_charge = sum_lanes_8(src[flag][status].sum_charge);
+    	op.count = sum_lanes_8(src[flag][status].count);
 	  }
 	}
+}
+
+void tpch_q1_columnar_double_masked_avx256(const LineitemColumnar *l, q1result out, int cutoff)
+{
+	q1group_template<__m256i> accs[k_flags][k_status] {};
+	__m256i cutoffv = _mm256_set1_epi32(cutoff);
+
+	for ( size_t i = 0; i < l->len; i+=k_vecsize ) {
+		auto datev = _mm256_load_si256((__m256i*)&l->l_shipdate[i]);
+
+		auto compgt = _mm256_cmpgt_epi32(datev, cutoffv);
+		auto mask = _mm256_xor_si256(compgt, _minus1);
+
+		auto flagv = _mm256_load_si256((__m256i*)&l->l_returnflag[i]);
+		auto statusv = _mm256_load_si256((__m256i*)&l->l_linestatus[i]);
+		auto quantityv = _mm256_load_si256((__m256i*)&l->l_quantity[i]);
+		auto pricev = _mm256_load_si256((__m256i*)&l->l_extendedprice[i]);
+		auto discountv = _mm256_load_si256((__m256i*)&l->l_discount[i]);
+		auto taxv = _mm256_load_si256((__m256i*)&l->l_tax[i]);
+
+		for (int f = 0; f < k_flags; ++f) {
+			auto fv = _mm256_set1_epi32(f);
+			auto eqf = _mm256_cmpeq_epi32(flagv, fv);
+
+			for (int s = 0; s < k_status; ++s) {
+				auto & op = accs[f][s];
+				auto sv = _mm256_set1_epi32(s);
+				auto eqs = _mm256_cmpeq_epi32(statusv, sv);
+
+				auto botheqv = _mm256_and_si256(eqs, eqf);
+				auto maskfsv = _mm256_and_si256(botheqv, mask);
+				op.count =  _mm256_add_epi32(_mm256_and_si256(maskfsv, _ones), op.count);
+				op.sum_qt = _mm256_add_epi32(_mm256_and_si256(maskfsv, quantityv), op.sum_qt);
+				op.sum_base_price = _mm256_add_epi32(_mm256_and_si256(maskfsv, pricev), op.sum_base_price);
+
+				auto actual_pcntX100 = _mm256_sub_epi32(_100s, discountv);
+				auto discounted_pricesX100 = _mm256_mullo_epi32(pricev, actual_pcntX100);
+				op.sum_disc_price = _mm256_add_epi32(_mm256_and_si256(maskfsv, discounted_pricesX100), op.sum_disc_price);
+
+				auto tax_pcntX100 = _mm256_add_epi32(_100s, taxv);
+				auto taxed_priceX10k = _mm256_mullo_epi32(discounted_pricesX100, tax_pcntX100);
+				op.sum_charge = _mm256_add_epi32(_mm256_and_si256(maskfsv, taxed_priceX10k), op.sum_charge);
+			}
+		}
+
+	}
+	merge_lanes(out, accs);
+	adjust_sums(out);
 }
 
 
@@ -347,20 +331,8 @@ void tpch_q1_columnar_clustered_avx256(const LineitemColumnar *l, q1result out, 
 	}
 	}
 
-
-	for (int f = 0; f < k_flags; ++f) {
-		for (int s = 0; s < k_status; ++s) {
-			for (size_t v = 0; v < k_vecsize; ++v) {
-				as_array(accs[f][s].sum_disc_price)[v] /= 100;
-				as_array(accs[f][s].sum_charge)[v] /= 10000;
-			}
-			out[f][s].count = sum_lanes_8(accs[f][s].count);
-			out[f][s].sum_qt = sum_lanes_8(accs[f][s].sum_qt);
-			out[f][s].sum_base_price= sum_lanes_8(accs[f][s].sum_base_price);
-			out[f][s].sum_disc_price = sum_lanes_8(accs[f][s].sum_disc_price);
-			out[f][s].sum_charge = sum_lanes_8(accs[f][s].sum_charge);
-		}
-	}	// merge accs.
+	merge_lanes(out, accs);
+	adjust_sums(out);
 }
 
 void tpch_q1_columnar_double_masked(const LineitemColumnar *l, q1result out, int cutoff)
@@ -516,7 +488,7 @@ map<string, variant_t> g_variants
 	impl(masked_direct),
 	impl(double_masked),
 	impl(condstore_direct),
-	impl(double_masked_avx128),
+	impl(double_masked_avx256),
 	impl(cond_avx256),
 	impl(clustered_avx256)
 };

@@ -664,24 +664,34 @@ int main(int ac, char** av){
 		auto after = clk::now();
 
 		size_t selected_count = 0;
-		if (first) {
-			for (int i = 0; i < k_flags; ++i) {
-				for (int j = 0 ;  j < k_status; ++j) {
-					ref_answer[i][j] = task_data[0].ans[i][j];
-					selected_count += task_data[0].ans[i][j].count;
+		for (int i = 0; i < k_flags; ++i) {
+			for (int j = 0; j < k_status; ++j) {
+				bool error_found = false;
+				selected_count += task_data[0].ans[i][j].count;
+				if (task_data[0].ans[i][j].sum_base_price < task_data[0].ans[i][j].sum_disc_price) {
+					cerr << "WARNING: base price less than discount prices";
+					error_found = true;
 				}
-			}
 
-		} else {
-			for (int i = 0; i < k_flags; ++i) {
-				for (int j = 0; j < k_status; ++j) {
-					selected_count += task_data[0].ans[i][j].count;
-					if (ref_answer[i][j] != task_data[0].ans[i][j]){
-						cerr << "WARNING: output mismatch with plain implementation found at l_linestatus: "
-								<< j << " l_returnflag: " << i << endl;
-						cerr << "Expected: " << endl << ref_answer[i][j] << endl;
-						cerr << "Actual: " << endl << task_data[0].ans[i][j] << endl;
-					}
+				if (task_data[0].ans[i][j].sum_disc_price > task_data[0].ans[i][j].sum_charge) {
+					cerr << "WARNING: discount price larger than after-tax price";
+					error_found = true;
+				}
+
+				if (first) {
+					ref_answer[i][j] = task_data[0].ans[i][j];
+					continue;
+				}
+
+				if (ref_answer[i][j] != task_data[0].ans[i][j]) {
+					cerr << "WARNING: output mismatch with plain plan.";
+					error_found = true;
+				}
+
+				if (error_found) {
+					cerr << "linestatus: " << j << " returnflag: " << i << endl;
+					cerr << "Expected: " << endl << ref_answer[i][j] << endl;
+					cerr << "Actual: " << endl << task_data[0].ans[i][j] << endl;
 				}
 			}
 		}

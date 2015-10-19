@@ -79,7 +79,7 @@ public:
 	}
 
 private:
-	unordered_map<string,string> pairs {};
+	map<string,string> pairs {};
 };
 
 int MarsagliaXOR(int *p_seed) {

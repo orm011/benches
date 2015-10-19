@@ -648,8 +648,12 @@ int main(int ac, char** av){
 				exit(1);
 			}
 		}
-	for (int repno = 0; repno < reps; ++repno) {
 	for (auto threads : threadlevels) {
+
+	vector<int> timing_info(reps);
+	vector<int> setup_timing(reps);
+
+	for (int repno = 0; repno < reps; ++repno) {
 
 		auto task = [](TaskData *w, int cutoff, variant_t f) {
 			q1group ans[k_flags][k_status] {}; //ensure outputs are read written in the stack. (assuming there is no false sharin then)
@@ -711,18 +715,19 @@ int main(int ac, char** av){
 		ADD(bo, actual_selectivity);
 		ADD(bo, threads);
 		ADD(bo, variant);
+		timing_info.push_back(duration_millis(before, after));
+		setup_timing.push_back(duration_millis(before, between));
 
-
-		auto time_millis = duration_millis(before, after);
-		ADD(bo, time_millis);
-
-		auto setup_millis = duration_millis(before, between);
-		ADD(bo, setup_millis);
-
-		if (first) { bo.display_param_names(); }
-		bo.display_param_values();
-		first = false;
 	}
+
+	for (int i = 0; i < reps; ++i) {
+		bo.set_variable("duration_millis_rep" + std::to_string(i), timing_info.at(i));
+		bo.set_variable("setup_millis_rep" + std::to_string(i), setup_timing.at(i));
+	}
+
+	if (first) { bo.display_param_names(); first = false; }
+	bo.display_param_values();
+
 	}
 	}
 	}

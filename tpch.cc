@@ -650,8 +650,8 @@ int main(int ac, char** av){
 		}
 	for (auto threads : threadlevels) {
 
-	vector<int> timing_info(reps);
-	vector<int> setup_timing(reps);
+	vector<int> timing_info;
+	vector<int> setup_timing;
 
 	for (int repno = 0; repno < reps; ++repno) {
 
@@ -717,12 +717,11 @@ int main(int ac, char** av){
 		ADD(bo, variant);
 		timing_info.push_back(duration_millis(before, after));
 		setup_timing.push_back(duration_millis(before, between));
-
 	}
 
 	for (int i = 0; i < reps; ++i) {
-		bo.set_variable("duration_millis_rep" + std::to_string(i), timing_info.at(i));
-		bo.set_variable("setup_millis_rep" + std::to_string(i), setup_timing.at(i));
+		bo.set_variable("duration_millis_rep" + std::to_string(i), timing_info[i]);
+		bo.set_variable("setup_millis_rep" + std::to_string(i), setup_timing[i]);
 	}
 
 	if (first) { bo.display_param_names(); first = false; }

@@ -1,11 +1,14 @@
 #include <tuple>
-#include <cilkpub/dotmix.h>
-#include <cilkpub/sort.h>
 #include <ostream>
 #include "common.h"
 #include "immintrin.h"
 #include <error.h>
 #include <stdio.h>
+
+#ifdef CILKPUB
+#include <cilkpub/dotmix.h>
+#include <cilkpub/sort.h>
+#endif
 
 using std::ostream;
 
@@ -488,6 +491,7 @@ struct TaskData {
  * not for NUMA.
  */
 void generateData (const vector<TaskData>  &l, bool sorted) {
+#ifdef CILKPUB
 	cilkpub::pedigree_scope scope = cilkpub::pedigree_scope::current();
 	cilkpub::DotMix c(0xabc);
 	c.init_scope(scope);
@@ -510,6 +514,9 @@ void generateData (const vector<TaskData>  &l, bool sorted) {
 		  cilkpub::cilk_sort_in_place(l[vec].data.l_shipdate, l[vec].data.l_shipdate + l[vec].data.len);
 	  }
 	}
+#else
+	assert(false);
+#endif
 }
 
 typedef void (*variant_t)(const LineitemColumnar *, q1group (*)[2], int);

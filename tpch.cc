@@ -134,13 +134,13 @@ void copy_groups(q1result dst, const q1result src) {
 	}
 }
 
-struct LineitemColumnar {
-	LineitemColumnar() = default;
+struct LineitemColumnarX {
+	LineitemColumnarX() = default;
 
-	LineitemColumnar(size_t len) : len(len) {
+	LineitemColumnarX(size_t len) : len(len) {
 		l_shipdate = allocate<int32_t>(len);
 		l_quantity = allocate<int32_t>(len);
-		l_extendedprice = allocate<int64_t>(len);
+		l_extendedprice = allocate<int32_t>(len);
 		l_discount = allocate<int32_t>(len); /*0.00 to 100.00*/
 		l_tax = allocate<int32_t>(len); /*0.00 to 100.00*/
 		l_returnflag = allocate<int32_t>(len); /* 2 values*/
@@ -148,15 +148,17 @@ struct LineitemColumnar {
 	}
 
 	void printitem(size_t i) {
-		printf("%d %ld %d %d %d %d %d\n",
+		printf("%d %d %d %d %d %d %d\n",
 				l_quantity[i], l_extendedprice[i], l_discount[i], l_tax[i], l_returnflag[i], l_linestatus[i], l_shipdate[i]);
 	}
+
+	// 28 bytes for qualifying. 4 for non qualifying.
 
 	word w1 {};
 	size_t len {};
 	int32_t *l_shipdate {}; //where
 	int32_t *l_quantity {};
-	int64_t *l_extendedprice {};
+	int32_t *l_extendedprice {};
 	int32_t *l_discount {};
 	int32_t *l_tax {};
 	int32_t *l_returnflag {};
@@ -165,33 +167,36 @@ struct LineitemColumnar {
 };
 
 
-struct LineitemColumnarOpt {
-	LineitemColumnarOpt() = default;
+struct LineitemColumnar {
+	LineitemColumnar() = default;
 
-	LineitemColumnarOpt(size_t len) : len(len) {
-		l_shipdate = allocate<uint16_t>(len);
+	LineitemColumnar(size_t len) : len(len) {
+		l_shipdate = allocate<int16_t>(len);
 		l_quantity = allocate<int32_t>(len);
-		l_extendedprice = allocate<int64_t>(len);
-		l_discount = allocate<uint16_t>(len); /*0.00 to 100.00*/
-		l_tax = allocate<uint16_t>(len); /*0.00 to 100.00*/
-		l_returnflag = allocate<uint8_t>(len); /* 2 values*/
-		l_linestatus = allocate<uint8_t>(len); /* 3 values*/
+		l_extendedprice = allocate<int32_t>(len);
+		l_discount = allocate<int16_t>(len); /*0.00 to 100.00*/
+		l_tax = allocate<int16_t>(len); /*0.00 to 100.00*/
+		l_returnflag = allocate<int8_t>(len); /* 2 values*/
+		l_linestatus = allocate<int8_t>(len); /* 3 values*/
 	}
 
 	void printitem(size_t i) {
-		printf("%d %ld %d %d %d %d %d\n",
+		printf("%d %d %d %d %d %d %d\n",
 				l_quantity[i], l_extendedprice[i], l_discount[i], l_tax[i], l_returnflag[i], l_linestatus[i], l_shipdate[i]);
 	}
 
+	// 16 bytes for qualifying
+	// 2 bytes for non qualifying.
+
 	word w1 {};
 	size_t len {};
-	uint16_t *l_shipdate {}; //where
+	int8_t *l_returnflag {};
+	int8_t *l_linestatus {};
+	int16_t *l_shipdate {}; //where
+	int16_t *l_discount {};
+	int16_t *l_tax {};
 	int32_t *l_quantity {};
-	int64_t *l_extendedprice {};
-	uint16_t *l_discount {};
-	uint16_t *l_tax {};
-	uint8_t *l_returnflag {};
-	uint8_t *l_linestatus {};
+	int32_t *l_extendedprice {};
 	word w2 {};
 };
 
@@ -561,7 +566,7 @@ LineitemColumnar from_file(string filename, size_t lines) {
 	while ((readline_result = getline(&buf, &buf_size, f)) > 0 && pos < lines) {
 
 		buf[readline_result] = '\0'; // null terminate for sscanf
-		int sscanf_result  = sscanf(buf, "%d %ld %d %d %d %d %d\n",
+		int sscanf_result  = sscanf(buf, "%d %d %hd %hd %hhd %hhd %hd\n",
 				&ans.l_quantity[pos],
 				&ans.l_extendedprice[pos],
 				&ans.l_discount[pos],
@@ -596,6 +601,59 @@ LineitemColumnar from_file(string filename, size_t lines) {
 	ans.len = pos; //set it to actual length.
 	return ans;
 }
+
+LineitemColumnarX from_filex(string filename, size_t lines) {
+	auto *f = fopen(filename.c_str(), "r");
+	if (!f) {
+		error(1, errno, "failed at fopen");
+	}
+
+	LineitemColumnarX ans(lines);
+	size_t pos = 0;
+
+	size_t buf_size = 100;
+	auto buf = (char*)malloc(buf_size);
+	long int readline_result = 0;
+
+	while ((readline_result = getline(&buf, &buf_size, f)) > 0 && pos < lines) {
+
+		buf[readline_result] = '\0'; // null terminate for sscanf
+		int sscanf_result  = sscanf(buf, "%d %d %d %d %d %d %d\n",
+				&ans.l_quantity[pos],
+				&ans.l_extendedprice[pos],
+				&ans.l_discount[pos],
+				&ans.l_tax[pos],
+				&ans.l_returnflag[pos],
+				&ans.l_linestatus[pos],
+				&ans.l_shipdate[pos]);
+		if (sscanf_result < 7 || sscanf_result == EOF) {
+			auto errnum = errno;
+			error(1, errnum, "failed at sscanf.");
+		}
+
+		++pos;
+	}
+
+	free(buf);
+
+	if (pos >= lines) {
+		printf("Ran out of space for file contents!\n");
+		exit(1);
+	} else {
+		auto errnum = errno;
+		if (errnum) { error(1, errnum, "failed at getline."); }
+	}
+
+	if (g_verbose) {
+		for (size_t i = 0; i < lines && i < 10; ++i){
+			ans.printitem(i); // debug.
+		}
+	}
+
+	ans.len = pos; //set it to actual length.
+	return ans;
+}
+
 
 int main(int ac, char** av){
 	po::options_description desc("Allowed options");

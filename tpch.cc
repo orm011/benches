@@ -608,6 +608,7 @@ int main(int ac, char** av){
 		("file", po::value<string>(), "dont generate. instead load data from file in format: qty eprice discount tax rflag lstatus sdate. all are ints")
 		("verbose", po::value<bool>()->default_value(false), "verbose")
 		("lines", po::value<int>(), "upper bound on lines in file")
+		("pause", po::value<bool>()->default_value(false), "pause before every method")
 		("cutoff", po::value<int>()->default_value(17500), "cutoff for file loaded date");
 
 	po::variables_map vm;
@@ -629,6 +630,7 @@ int main(int ac, char** av){
 	assert(threadlevels.size() > 0);
 	std::sort(threadlevels.begin(), threadlevels.end());
 	vm.erase("threadlevels");
+	bool pause = vm["pause"].as<bool>();
 
 	bool sorted = vm["sorted"].as<bool>();
 	bool results = vm["results"].as<bool>();
@@ -668,6 +670,10 @@ int main(int ac, char** av){
 	q1group ref_answer[k_flags][k_status] {};
 
 	for (auto &variant : variants){
+		if (pause) {
+			printf("about to start variant \"%s\". Press any key to continue...\n", variant.c_str());
+			getchar();
+		}
 	auto f = dispatch_function(variant);
 	for (auto selectivity : selectivities) {
 		uint32_t cutoff;

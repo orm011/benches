@@ -161,6 +161,38 @@ struct LineitemColumnar {
 	word w2 {};
 };
 
+
+struct LineitemColumnarOpt {
+	LineitemColumnarOpt() = default;
+
+	LineitemColumnarOpt(size_t len) : len(len) {
+		l_shipdate = allocate<uint16_t>(len);
+		l_quantity = allocate<int32_t>(len);
+		l_extendedprice = allocate<int64_t>(len);
+		l_discount = allocate<uint16_t>(len); /*0.00 to 100.00*/
+		l_tax = allocate<uint16_t>(len); /*0.00 to 100.00*/
+		l_returnflag = allocate<uint8_t>(len); /* 2 values*/
+		l_linestatus = allocate<uint8_t>(len); /* 3 values*/
+	}
+
+	void printitem(size_t i) {
+		printf("%d %ld %d %d %d %d %d\n",
+				l_quantity[i], l_extendedprice[i], l_discount[i], l_tax[i], l_returnflag[i], l_linestatus[i], l_shipdate[i]);
+	}
+
+	word w1 {};
+	size_t len {};
+	uint16_t *l_shipdate {}; //where
+	int32_t *l_quantity {};
+	int64_t *l_extendedprice {};
+	uint16_t *l_discount {};
+	uint16_t *l_tax {};
+	uint8_t *l_returnflag {};
+	uint8_t *l_linestatus {};
+	word w2 {};
+};
+
+
 const size_t k_unroll = 8;
 void tpch_q1_baseline(const word *l, size_t len,  int64_t *out) {
 	char sum[k_unroll] {};

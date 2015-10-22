@@ -664,8 +664,12 @@ int main(int ac, char** av){
 		printf("need a file\n");
 		exit(1);
 	}
+
 	int cutoff = 18200; // 95%
 	bool pause = false;
+	if (getenv("PAUSE")){
+		pause = true;
+	}
 	bool results = true;
 	int lines = 59986053;
 	int reps = 10;

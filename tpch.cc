@@ -677,6 +677,9 @@ int main(int ac, char** av){
 
 	int lines = 59986053;
 	int reps = 10;
+	if (getenv("REPS")){
+		reps = 100;
+	}
 
 //	desc.add_options()
 //		("help", "show this")

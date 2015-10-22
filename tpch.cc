@@ -670,7 +670,11 @@ int main(int ac, char** av){
 	if (getenv("PAUSE")){
 		pause = true;
 	}
-	bool results = true;
+	bool results = false;
+	if (getenv("RESULTS")){
+		pause = true;
+	}
+
 	int lines = 59986053;
 	int reps = 10;
 
@@ -737,7 +741,7 @@ int main(int ac, char** av){
 	vector<int> timing_info;
 
 	map<string, string> params;
-
+	int actual_selectivity  = 0;
 	for (int repno = 0; repno < reps; ++repno) {
 
 		auto task = [](TaskData *w, int cutoff, variant_t f) {
@@ -793,9 +797,9 @@ int main(int ac, char** av){
 			}
 		}
 
-		int actual_selectivity =  selected_count * 100 / task_data[0].data.len;
+		actual_selectivity =  selected_count * 100 / task_data[0].data.len;
 		//int actual_lines = task_data[0].data.len;
-		printf("actual selectivity: %d\n", actual_selectivity);
+//		printf("actual selectivity: %d\n", actual_selectivity);
 //		ADD(bo, actual_lines);
 //		ADD(bo, actual_selectivity);
 //		ADD(bo, threads);
@@ -803,7 +807,7 @@ int main(int ac, char** av){
 		timing_info.push_back(duration_millis(before, after));
 	}
 
-	printf("%s ", variant.c_str());
+	printf("%s %d ", variant.c_str(), actual_selectivity);
 	for (int i = 0; i < reps; ++i){
 		printf("%d ", timing_info[i]);
 	}

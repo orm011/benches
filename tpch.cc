@@ -680,8 +680,12 @@ int main(int ac, char** av){
 		("pause", po::value<bool>()->default_value(false), "pause before every method")
 		("cutoff", po::value<int>()->default_value(18200), "cutoff for file loaded date");
 
-
 	bool pause_v = getenv("PAUSE");
+	auto file = getenv("FILE");
+	if (!file){
+		printf("FILE!!!!\n");
+		exit(1);
+	}
 
 	variables_map vm = {
 			{"lines", my_variable_value(boost::any(59986053))},
@@ -693,6 +697,8 @@ int main(int ac, char** av){
 			{"variants", my_variable_value(std::vector<string>{"plain"})},
 			{"results", my_variable_value(boost::any(false))},
 	};
+
+
 	//po::store(po::parse_command_line(ac, av, desc), vm);
 	//po::notify(vm);
 

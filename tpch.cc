@@ -734,6 +734,8 @@ int main(int ac, char** av){
 
 	q1group ref_answer[k_flags][k_status] {};
 
+	while (true) {
+
 	for (auto &variant : variants){
 		if (pause) {
 			printf("about to start variant \"%s\". Press any key to continue...\n", variant.c_str());
@@ -823,6 +825,6 @@ int main(int ac, char** av){
 
 //	if (first) { bo.display_param_names(); first = false; }
 //	bo.display_param_values();
-
+	}
 	}
 	}

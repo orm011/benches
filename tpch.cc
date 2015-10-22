@@ -688,6 +688,8 @@ int main(int ac, char** av){
 	}
 
 	variables_map vm;
+	vm.insert({"verbose", boost::any(false)});
+	vm.insert({"sorted", boost::any(false)});
 	vm.insert({"lines", my_variable_value(boost::any(59986053))});
 	vm.insert({"reps", my_variable_value(boost::any(1))});
 	vm.insert({"items", my_variable_value(boost::any(1024))});

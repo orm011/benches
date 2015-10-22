@@ -134,10 +134,10 @@ void copy_groups(q1result dst, const q1result src) {
 	}
 }
 
-struct LineitemColumnarX {
-	LineitemColumnarX() = default;
+struct LineitemColumnar {
+	LineitemColumnar() = default;
 
-	LineitemColumnarX(size_t len) : len(len) {
+	LineitemColumnar(size_t len) : len(len) {
 		l_shipdate = allocate<int32_t>(len);
 		l_quantity = allocate<int32_t>(len);
 		l_extendedprice = allocate<int32_t>(len);
@@ -167,10 +167,10 @@ struct LineitemColumnarX {
 };
 
 
-struct LineitemColumnar {
-	LineitemColumnar() = default;
+struct LineitemColumnarX {
+	LineitemColumnarX() = default;
 
-	LineitemColumnar(size_t len) : len(len) {
+	LineitemColumnarX(size_t len) : len(len) {
 		l_shipdate = allocate<int16_t>(len);
 		l_quantity = allocate<int32_t>(len);
 		l_extendedprice = allocate<int32_t>(len);
@@ -550,13 +550,13 @@ variant_t dispatch_function(string variant) {
 	}
 }
 
-LineitemColumnar from_file(string filename, size_t lines) {
+LineitemColumnarX from_fileX(string filename, size_t lines) {
 	auto *f = fopen(filename.c_str(), "r");
 	if (!f) {
 		error(1, errno, "failed at fopen");
 	}
 
-	LineitemColumnar ans(lines);
+	LineitemColumnarX ans(lines);
 	size_t pos = 0;
 
 	size_t buf_size = 100;
@@ -602,13 +602,13 @@ LineitemColumnar from_file(string filename, size_t lines) {
 	return ans;
 }
 
-LineitemColumnarX from_filex(string filename, size_t lines) {
+LineitemColumnar from_file(string filename, size_t lines) {
 	auto *f = fopen(filename.c_str(), "r");
 	if (!f) {
 		error(1, errno, "failed at fopen");
 	}
 
-	LineitemColumnarX ans(lines);
+	LineitemColumnar ans(lines);
 	size_t pos = 0;
 
 	size_t buf_size = 100;
@@ -665,7 +665,7 @@ int main(int ac, char** av){
 		exit(1);
 	}
 
-	int cutoff = 18200; // 95%
+	int cutoff = 18500; // 100%
 	bool pause = false;
 	if (getenv("PAUSE")){
 		pause = true;

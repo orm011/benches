@@ -29,8 +29,31 @@ inline int duration_millis(auto before, auto after){
 	return std::chrono::duration_cast<std::chrono::milliseconds>(after - before).count();
 }
 
+class my_variable_value {
+public:
+    my_variable_value()  {}
 
-string to_string(const po::variable_value &v) {
+    my_variable_value(const boost::any& xv)
+    : v(xv) {}
+
+    /** If stored value if of type T, returns that value. Otherwise,
+        throws boost::bad_any_cast exception. */
+   template<class T>
+   const T& as() const {
+       return boost::any_cast<const T&>(v);
+   }
+   /** @overload */
+   template<class T>
+   T& as() {
+       return boost::any_cast<T&>(v);
+   }
+
+private:
+    boost::any v;
+};
+
+
+string to_string(const  my_variable_value &v) {
 	try {
 		return v.as<string>();
 	} catch (exception &e) { try {
@@ -44,12 +67,12 @@ string to_string(const po::variable_value &v) {
 
 #define ADD(bo, x) (bo).set_variable(#x, (x))
 
-class BenchmarkOutput {
+template <typename VM> class BenchmarkOutput {
 
 public:
 	BenchmarkOutput(){ }
 
-	BenchmarkOutput(const po::variables_map &vm){
+	BenchmarkOutput(const VM &vm){
 		for (const auto &p: vm) {
 			pairs[p.first] = to_string(p.second);
 		}

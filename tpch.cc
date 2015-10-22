@@ -655,6 +655,10 @@ LineitemColumnarX from_filex(string filename, size_t lines) {
 }
 
 
+
+typedef std::map<string, my_variable_value> variables_map;
+
+
 int main(int ac, char** av){
 	po::options_description desc("Allowed options");
 	vector<uint32_t> selectivities  {90};
@@ -674,24 +678,36 @@ int main(int ac, char** av){
 		("verbose", po::value<bool>()->default_value(false), "verbose")
 		("lines", po::value<int>(), "upper bound on lines in file")
 		("pause", po::value<bool>()->default_value(false), "pause before every method")
-		("cutoff", po::value<int>()->default_value(17500), "cutoff for file loaded date");
+		("cutoff", po::value<int>()->default_value(18200), "cutoff for file loaded date");
 
-	po::variables_map vm;
-	po::store(po::parse_command_line(ac, av, desc), vm);
-	po::notify(vm);
+
+	bool pause_v = getenv("PAUSE");
+
+	variables_map vm = {
+			{"lines", my_variable_value(boost::any(59986053))},
+			{"reps", my_variable_value(boost::any(1))},
+			{"items", my_variable_value(boost::any(1024))},
+			{"file", my_variable_value(boost::any(std::string(getenv("FILE"))))},
+			{"cutoff", my_variable_value(boost::any(18200))},
+			{"pause", my_variable_value(boost::any(pause_v))},
+			{"variants", my_variable_value(std::vector<string>{"plain"})},
+			{"results", my_variable_value(boost::any(false))},
+	};
+	//po::store(po::parse_command_line(ac, av, desc), vm);
+	//po::notify(vm);
+
 
 	if (vm.count("help")) {
 	    cout << desc << "\n";
 	    return 1;
 	}
-
 	g_verbose = vm["verbose"].as<bool>();
 
 	int items = vm["items"].as<int>();
 	int reps = vm["reps"].as<int>();
-	selectivities = vm["selectivities"].as<vector<uint32_t>>();
-	vm.erase("selectivities");
-	threadlevels = vm["threadlevels"].as<vector<int>>();
+//	selectivities = vm["selectivities"].as<vector<uint32_t>>();
+//	vm.erase("selectivities");
+	threadlevels = vector<int>{1}; //vm["threadlevels"].as<vector<int>>();
 	assert(threadlevels.size() > 0);
 	std::sort(threadlevels.begin(), threadlevels.end());
 	vm.erase("threadlevels");
@@ -722,7 +738,7 @@ int main(int ac, char** av){
 		generateData(task_data, sorted);
 	}
 
-	BenchmarkOutput bo(vm);
+	BenchmarkOutput<variables_map> bo(vm);
 	bool first = true;
 	vector<string> variants {"plain"};
 

@@ -665,10 +665,14 @@ int main(int ac, char** av){
 		exit(1);
 	}
 
+	if (getenv("VARIANT")){
+		variants.push_back(getenv("VARIANT"));
+	}
+
 	int cutoff = 18500; // 100%
-	bool pause = false;
-	if (getenv("PAUSE")){
-		pause = true;
+	bool pause = true;
+	if (getenv("NOPAUSE")){
+		pause = false;
 	}
 	bool results = false;
 	if (getenv("RESULTS")){
@@ -681,56 +685,10 @@ int main(int ac, char** av){
 		reps = 100;
 	}
 
-//	desc.add_options()
-//		("help", "show this")
-//		("threadlevels", po::value<vector<int>>()->multitoken()->default_value(threadlevels, "1, 2"), "different numbers of threads to try")
-//	    ("items", po::value<int>()->default_value(1024), "items in lineitem")
-//	    ("reps", po::value<int>()->default_value(1), "number of repetitions")
-//		("selectivities", po::value<vector<uint32_t>>()->multitoken()->default_value(selectivities, "10, 90"), "from 1 to 100, percentage of tuples that qualify.")
-//		("sorted", po::value<bool>()->default_value(true), "0 to leave data in position, or 1 to sort workload by shipdate")
-//		("results", po::value<bool>()->default_value(false), "0 hides results for the last run of the first thread, 1 shows them")
-//		("variants", po::value<vector<string>>()->multitoken()->default_value(input_variants, "{plain}"), "variant to use")
-//		("file", po::value<string>(), "dont generate. instead load data from file in format: qty eprice discount tax rflag lstatus sdate. all are ints")
-//		("verbose", po::value<bool>()->default_value(false), "verbose")
-//		("lines", po::value<int>(), "upper bound on lines in file")
-//		("pause", po::value<bool>()->default_value(false), "pause before every method")
-//		("cutoff", po::value<int>()->default_value(17500), "cutoff for file loaded date");
-
-//	po::variables_map vm;
-//	po::store(po::parse_command_line(ac, av, desc), vm);
-//	po::notify(vm);
-//
-//	if (vm.count("help")) {
-//	    cout << desc << "\n";
-//	    return 1;
-//	}
-//
-//	g_verbose = vm["verbose"].as<bool>();
-
-//	int items = vm["items"].as<int>();
-//	int reps = vm["reps"].as<int>();
-//	selectivities = vm["selectivities"].as<vector<uint32_t>>();
-//	vm.erase("selectivities");
-//	threadlevels = vm["threadlevels"].as<vector<int>>();
-//	assert(threadlevels.size() > 0);
-//	std::sort(threadlevels.begin(), threadlevels.end());
-//	vm.erase("threadlevels");
-//	bool pause = vm["pause"].as<bool>();
-//
-//	bool sorted = vm["sorted"].as<bool>();
-//	bool results = vm["results"].as<bool>();
-//	input_variants = vm["variants"].as<vector<string>>();
-//	vm.erase("variants");
-
 	vector<TaskData> task_data(1);
-//	for (int i = 0; i < threadlevels.back(); ++i) {
-//			task_data[i].data = LineitemColumnar(lines);
-//	}
 	task_data[0].data = from_file(file, lines);
 
-//	BenchmarkOutput bo(vm);
 	bool first = true;
-	//vector<string> variants {"plain"};
 
 	q1group ref_answer[k_flags][k_status] {};
 
@@ -757,7 +715,6 @@ int main(int ac, char** av){
 
 		auto before = clk::now();
 		for (auto & w : task_data){ w.t = thread(task, &w, cutoff, f); }
-		//auto between = clk::now();
 		for (auto & w : task_data) { w.t.join(); }
 		auto after = clk::now();
 
@@ -803,12 +760,6 @@ int main(int ac, char** av){
 		}
 
 		actual_selectivity =  selected_count * 100 / task_data[0].data.len;
-		//int actual_lines = task_data[0].data.len;
-//		printf("actual selectivity: %d\n", actual_selectivity);
-//		ADD(bo, actual_lines);
-//		ADD(bo, actual_selectivity);
-//		ADD(bo, threads);
-//		ADD(bo, variant);
 		timing_info.push_back(duration_millis(before, after));
 	}
 
@@ -818,13 +769,6 @@ int main(int ac, char** av){
 	}
 	printf("\n");
 	first = false;
-//	for (int i = 0; i < reps; ++i) {
-//		bo.set_variable("duration_millis_rep" + std::to_string(i), timing_info[i]);
-//		bo.set_variable("setup_millis_rep" + std::to_string(i), setup_timing[i]);
-//	}
-
-//	if (first) { bo.display_param_names(); first = false; }
-//	bo.display_param_values();
 	}
 	}
 	}

@@ -302,7 +302,6 @@ void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int c
 		auto compgt = _mm256_cmpgt_epi32(datev, cutoffv);
 		auto mask = _mm256_xor_si256(compgt, _minus1);
 
-		if (!_mm256_testz_si256(mask, mask)) { // may want to remove for high selectivity
 			auto flagv = _mm256_load_si256((__m256i*)&(l->l_returnflag[i]));
 			auto statusv = _mm256_load_si256((__m256i*)&l->l_linestatus[i]);
 
@@ -313,6 +312,7 @@ void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int c
 
 			auto actual_pcntX100 = _mm256_sub_epi32(_100s, discountv);
 			auto discounted_pricesX100 = _mm256_mullo_epi32(pricev, actual_pcntX100);
+
 			auto tax_pcntX100 = _mm256_add_epi32(_100s, taxv);
 			auto taxed_priceX10k = _mm256_mullo_epi32(discounted_pricesX100, tax_pcntX100);
 
@@ -330,7 +330,6 @@ void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int c
 					op.sum_charge += as_array(taxed_priceX10k)[elt];
 				}
 			}
-		}
 	}
 
 	adjust_sums(out);
@@ -656,7 +655,7 @@ LineitemColumnar from_file(string filename, size_t lines) {
 
 
 int main(int ac, char** av){
-	vector<string> variants {"plain"};
+	vector<string> variants {};
 	string file;
 	if (getenv("FILE")) {
 		file = string(getenv("FILE"));
@@ -667,6 +666,8 @@ int main(int ac, char** av){
 
 	if (getenv("VARIANT")){
 		variants.push_back(getenv("VARIANT"));
+	} else {
+		variants.push_back("plain");
 	}
 
 	int cutoff = 18500; // 100%

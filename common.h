@@ -138,5 +138,18 @@ template <typename T> T* allocate(size_t len, size_t byte_alignment = 64) {
 	 return (T*)p;
 }
 
+#define as_array(r) ((int32_t*)(&(r)))
+static const size_t k_vecsize = 8;
+static const __m256i _minus1 = _mm256_set1_epi32(0xffffffff);
+static const __m256i _ones = _mm256_set1_epi32(1);
+
+inline int64_t sum_lanes_8(const __m256i & vector){
+	int64_t total = 0;
+	const int32_t *p = (int32_t*)&vector;
+	for (int lane = 0; lane < 8; ++lane) {
+		total += p[lane];
+	}
+	return total;
+}
 
 #endif /* COMMON_H_ */

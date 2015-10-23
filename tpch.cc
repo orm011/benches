@@ -277,13 +277,13 @@ void tpch_q1_columnar_double_masked_avx256(const LineitemColumnar *l, q1result o
 	adjust_sums(out);
 }
 
+//_mm256_i32gather_epi32((const int*)$prev, $offsets, 4);
 #define gather_incr($prev, $offsets, $mask, $delta, $val_out)  \
 					do {\
-						auto currval = _mm256_i32gather_epi32((const int*)$prev, $offsets, 4);\
+						auto currval = _mm256_load_si256($prev);\
 						auto masked_delta = _mm256_and_si256($delta, $mask);\
 						$val_out = _mm256_add_epi32(currval, masked_delta);\
 					 } while (0)
-
 
 void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int cutoff)
 {

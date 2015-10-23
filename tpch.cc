@@ -295,7 +295,16 @@ void tpch_q1_columnar_double_masked_avx256(const LineitemColumnar *l, q1result o
 
 void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int cutoff)
 {
+	__m256i count[k_flags*k_status]  {};
+//	__m256i sum_qt[k_flags*k_status]  {};
+//	__m256i sum_base_price[k_flags*k_status]  {};
+//	__m256i sum_disc_price[k_flags*k_status]  {};
+//	__m256i sum_charge[k_flags*k_status]  {};
+
 	__m256i cutoffv = _mm256_set1_epi32(cutoff);
+	__m256i posv = _mm256_set_epi32(0,1,2,3,4,5,6,7);
+	__m256i k_statusv = _mm256_set1_epi32(k_status);
+
 
 	for ( size_t i = 0; i < l->len; i+= k_vecsize) {
 		auto datev = _mm256_load_si256((__m256i*)&l->l_shipdate[i]);
@@ -316,20 +325,35 @@ void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int c
 			auto tax_pcntX100 = _mm256_add_epi32(_100s, taxv);
 			auto taxed_priceX10k = _mm256_mullo_epi32(discounted_pricesX100, tax_pcntX100);
 
+			// gather and add totals.
+			// position in the totals array: base + (flags*k_status) + status + posv
+			auto tmp1 = _mm256_add_epi32(statusv, posv);
+			auto tmp2 = _mm256_mullo_epi32(flagv, k_statusv);
+			auto offsets = _mm256_add_epi32(tmp1, tmp2);
+
+			auto currcountv = _mm256_i32gather_epi32((const int*)count, offsets, 4);
+			auto newcountv = _mm256_add_epi32(currcountv, quantityv);
+
 			// go through each result and increment the correct counter or none
 			for (size_t elt = 0; elt < k_vecsize; ++elt) {
 				if (as_array(mask)[elt]) {
 					auto &f = as_array(flagv)[elt];
 					auto &s = as_array(statusv)[elt];
-				    auto &op = out[f][s];
+					as_array(count)[as_array(offsets)[elt]] = as_array(newcountv)[elt]; //scatter.
 
-					op.count += 1;
+				    auto &op = out[f][s];
 					op.sum_qt += as_array(quantityv)[elt];
 					op.sum_base_price += as_array(pricev)[elt];
 					op.sum_disc_price += as_array(discounted_pricesX100)[elt];
 					op.sum_charge += as_array(taxed_priceX10k)[elt];
 				}
 			}
+	}
+
+	for (int f = 0; f < k_flags; ++f){
+		for (int s = 0; s < k_status; ++s){
+			out[f][s].count = sum_lanes_8(count[f*k_status + s]);
+		}
 	}
 
 	adjust_sums(out);
@@ -471,6 +495,7 @@ void tpch_q1_columnar_plain(const LineitemColumnar *l, q1result out, int cutoff)
 
 	adjust_sums(out);
 }
+
 
 struct TaskData {
 	LineitemColumnar data {};

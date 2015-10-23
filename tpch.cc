@@ -295,7 +295,7 @@ void tpch_q1_columnar_double_masked_avx256(const LineitemColumnar *l, q1result o
 
 void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int cutoff)
 {
-	__m256i count[k_flags*k_status]  {};
+	__m256i count[k_flags*k_status]  {}; // (indexed by f * k_status + s) (f=0, s=0) then (f=0, s= 1);
 //	__m256i sum_qt[k_flags*k_status]  {};
 //	__m256i sum_base_price[k_flags*k_status]  {};
 //	__m256i sum_disc_price[k_flags*k_status]  {};
@@ -332,7 +332,8 @@ void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int c
 			auto offsets = _mm256_add_epi32(tmp1, tmp2);
 
 			auto currcountv = _mm256_i32gather_epi32((const int*)count, offsets, 4);
-			auto newcountv = _mm256_add_epi32(currcountv, quantityv);
+			auto maskedcount = _mm256_and_si256(_ones, mask);
+			auto newcountv = _mm256_add_epi32(currcountv, maskedcount);
 
 			// go through each result and increment the correct counter or none
 			for (size_t elt = 0; elt < k_vecsize; ++elt) {

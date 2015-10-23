@@ -338,11 +338,11 @@ void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int c
 			gather_incr(sum_charge, offsets, mask, taxed_priceX10k, new_sum_charge);
 
 			// manual scatter.
-			for (size_t elt = 0; elt < k_vecsize; elt+=4) {
+			for (size_t elt = 0; elt < k_vecsize; elt+=1) {
 				auto offset0 = as_array(offsets)[elt];
-				auto offset1 = as_array(offsets)[elt+1];
-				auto offset2 = as_array(offsets)[elt+2];
-				auto offset3 = as_array(offsets)[elt+3];
+//				auto offset1 = as_array(offsets)[elt+1];
+//				auto offset2 = as_array(offsets)[elt+2];
+//				auto offset3 = as_array(offsets)[elt+3];
 
 				as_array(count)[offset0] = as_array(new_count)[elt]; //scatter.
 				as_array(sum_qt)[offset0] = as_array(new_sum_qnt)[elt]; //scatter.
@@ -350,29 +350,33 @@ void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int c
 				as_array(sum_disc_price)[offset0] = as_array(new_sum_disc_price)[elt]; //scatter.
 				as_array(sum_charge)[offset0] = as_array(new_sum_charge)[elt]; //scatter.
 
-				as_array(count)[offset1] = as_array(new_count)[elt+1]; //scatter.
-				as_array(sum_qt)[offset1] = as_array(new_sum_qnt)[elt+1]; //scatter.
-				as_array(sum_base_price)[offset1] = as_array(new_sum_base_price)[elt+1]; //scatter.
-				as_array(sum_disc_price)[offset1] = as_array(new_sum_disc_price)[elt+1]; //scatter.
-				as_array(sum_charge)[offset1] = as_array(new_sum_charge)[elt+1]; //scatter.
-
-				as_array(count)[offset2] = as_array(new_count)[elt+2]; //scatter.
-				as_array(sum_qt)[offset2] = as_array(new_sum_qnt)[elt+2]; //scatter.
-				as_array(sum_base_price)[offset2] = as_array(new_sum_base_price)[elt+2]; //scatter.
-				as_array(sum_disc_price)[offset2] = as_array(new_sum_disc_price)[elt+2]; //scatter.
-				as_array(sum_charge)[offset2] = as_array(new_sum_charge)[elt+2]; //scatter.
-
-				as_array(count)[offset3] = as_array(new_count)[elt+3]; //scatter.
-				as_array(sum_qt)[offset3] = as_array(new_sum_qnt)[elt+3]; //scatter.
-				as_array(sum_base_price)[offset3] = as_array(new_sum_base_price)[elt+3]; //scatter.
-				as_array(sum_disc_price)[offset3] = as_array(new_sum_disc_price)[elt+3]; //scatter.
-				as_array(sum_charge)[offset3] = as_array(new_sum_charge)[elt+3]; //scatter.
+//				as_array(count)[offset1] = as_array(new_count)[elt+1]; //scatter.
+//				as_array(sum_qt)[offset1] = as_array(new_sum_qnt)[elt+1]; //scatter.
+//				as_array(sum_base_price)[offset1] = as_array(new_sum_base_price)[elt+1]; //scatter.
+//				as_array(sum_disc_price)[offset1] = as_array(new_sum_disc_price)[elt+1]; //scatter.
+//				as_array(sum_charge)[offset1] = as_array(new_sum_charge)[elt+1]; //scatter.
+//
+//				as_array(count)[offset2] = as_array(new_count)[elt+2]; //scatter.
+//				as_array(sum_qt)[offset2] = as_array(new_sum_qnt)[elt+2]; //scatter.
+//				as_array(sum_base_price)[offset2] = as_array(new_sum_base_price)[elt+2]; //scatter.
+//				as_array(sum_disc_price)[offset2] = as_array(new_sum_disc_price)[elt+2]; //scatter.
+//				as_array(sum_charge)[offset2] = as_array(new_sum_charge)[elt+2]; //scatter.
+//
+//				as_array(count)[offset3] = as_array(new_count)[elt+3]; //scatter.
+//				as_array(sum_qt)[offset3] = as_array(new_sum_qnt)[elt+3]; //scatter.
+//				as_array(sum_base_price)[offset3] = as_array(new_sum_base_price)[elt+3]; //scatter.
+//				as_array(sum_disc_price)[offset3] = as_array(new_sum_disc_price)[elt+3]; //scatter.
+//				as_array(sum_charge)[offset3] = as_array(new_sum_charge)[elt+3]; //scatter.
 			}
 	}
 
 	for (int f = 0; f < k_flags; ++f){
 		for (int s = 0; s < k_status; ++s) {
 			out[f][s].count = sum_lanes_8(count[f*k_status + s]);
+			out[f][s].sum_qt = sum_lanes_8(sum_qt[f*k_status + s]);
+			out[f][s].sum_base_price= sum_lanes_8(sum_base_price[f*k_status + s]);
+			out[f][s].sum_disc_price = sum_lanes_8(sum_disc_price[f*k_status + s]);
+			out[f][s].sum_charge = sum_lanes_8(sum_charge[f*k_status + s]);
 		}
 	}
 

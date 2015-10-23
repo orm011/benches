@@ -42,17 +42,6 @@ l_linestatus;
 */
 #define OUT(x) #x << ": " << x << " "
 
-
-inline int64_t sum_lanes_8(const __m256i & vector){
-	int64_t total = 0;
-	const int32_t *p = (int32_t*)&vector;
-	for (int lane = 0; lane < 8; ++lane) {
-		total += p[lane];
-	}
-	return total;
-}
-
-
 template <typename T> struct q1group_template {
 	T count {};
 	T sum_qt {};
@@ -225,11 +214,7 @@ void tpch_q1_baseline(const word *l, size_t len,  int64_t *out) {
 	}
 }
 
-#define as_array(r) ((int32_t*)(&(r)))
-static const size_t k_vecsize = 8;
-const __m256i _minus1 = _mm256_set1_epi32(0xffffffff);
-const __m256i _100s = _mm256_set1_epi32(100);
-const __m256i _ones = _mm256_set1_epi32(1);
+__m256i _100s = _mm256_set1_epi32(100);
 
 void merge_lanes(q1result dst, const q1group_template<__m256i> src[k_flags][k_status]) {
 	for (int flag = 0; flag < k_flags; flag++) {
@@ -303,7 +288,6 @@ void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int c
 
 	__m256i cutoffv = _mm256_set1_epi32(cutoff);
 	__m256i posv = _mm256_set_epi32(0,1,2,3,4,5,6,7);
-	__m256i k_statusv = _mm256_set1_epi32(k_status);
 
 
 	for ( size_t i = 0; i < l->len; i+= k_vecsize) {
@@ -327,9 +311,10 @@ void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int c
 
 			// gather and add totals.
 			// position in the totals array: base + (flags*k_status) + status + posv
-			auto tmp1 = _mm256_add_epi32(statusv, posv);
-			auto tmp2 = _mm256_mullo_epi32(flagv, k_statusv);
-			auto offsets = _mm256_add_epi32(tmp1, tmp2);
+			auto tmp1 = _mm256_slli_epi32(flagv, 1);
+			auto tmp2 = _mm256_add_epi32(statusv, tmp1);
+			auto tmp3 = _mm256_slli_epi32(tmp2, 3); // mult by 8.
+			auto offsets = _mm256_add_epi32(tmp3, posv);
 
 			auto currcountv = _mm256_i32gather_epi32((const int*)count, offsets, 4);
 			auto maskedcount = _mm256_and_si256(_ones, mask);
@@ -340,7 +325,8 @@ void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int c
 				if (as_array(mask)[elt]) {
 					auto &f = as_array(flagv)[elt];
 					auto &s = as_array(statusv)[elt];
-					as_array(count)[as_array(offsets)[elt]] = as_array(newcountv)[elt]; //scatter.
+					auto offset = as_array(offsets)[elt];
+					as_array(count)[offset] = as_array(newcountv)[elt]; //scatter.
 
 				    auto &op = out[f][s];
 					op.sum_qt += as_array(quantityv)[elt];

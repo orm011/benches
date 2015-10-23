@@ -702,7 +702,7 @@ int main(int ac, char** av){
 	}
 	bool results = false;
 	if (getenv("RESULTS")){
-		pause = true;
+		results = true;
 	}
 
 	int lines = 59986053;

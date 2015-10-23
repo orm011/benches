@@ -278,10 +278,13 @@ void tpch_q1_columnar_double_masked_avx256(const LineitemColumnar *l, q1result o
 }
 
 //_mm256_i32gather_epi32((const int*)$prev, $offsets, 4);
+// use a load to get (wrong) data (not a gather), but to keep working set size consistent by cycling through it.
+// remember i jumps up by 8 every time. so i/8 increases by 1.
 #define gather_incr($prev, $offsets, $mask, $delta, $val_out, $i)  \
 					do {\
-						auto currval = _mm256_load_si256(($prev) + ($i)*8);\
-						auto gather_plcholder = _mm256_xor_si256(currval, _ones); \
+						auto pos = ((($i >> 3) % 6));\
+						auto currval = _mm256_load_si256(($prev) + pos);\
+						auto gather_plcholder = _mm256_xor_si256(currval, $offsets); \
 						auto masked_delta = _mm256_and_si256(($delta), ($mask));\
 						($val_out) = _mm256_add_epi32(gather_plcholder, masked_delta);\
 					 } while (0)
@@ -324,19 +327,19 @@ void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int c
 			auto offsets = _mm256_add_epi32(tmp3, posv);
 
 			__m256i new_count {};
-			gather_incr(count, offsets, mask, _ones, new_count, (i>>3));
+			gather_incr(count, offsets, mask, _ones, new_count, i);
 
 			__m256i new_sum_qnt {};
-			gather_incr(sum_qt, offsets, mask, quantityv, new_sum_qnt, (i>>3));
+			gather_incr(sum_qt, offsets, mask, quantityv, new_sum_qnt, i);
 
 			__m256i new_sum_base_price {};
-			gather_incr(sum_base_price, offsets, mask, pricev, new_sum_base_price, (i>>3));
+			gather_incr(sum_base_price, offsets, mask, pricev, new_sum_base_price, i);
 
 			__m256i new_sum_disc_price {};
-			gather_incr(sum_disc_price, offsets, mask, discounted_pricesX100, new_sum_disc_price, (i>>3));
+			gather_incr(sum_disc_price, offsets, mask, discounted_pricesX100, new_sum_disc_price, i);
 
 			__m256i new_sum_charge {};
-			gather_incr(sum_charge, offsets, mask, taxed_priceX10k, new_sum_charge, (i>>3));
+			gather_incr(sum_charge, offsets, mask, taxed_priceX10k, new_sum_charge, i);
 
 			// manual scatter.
 			for (size_t elt = 0; elt < k_vecsize; elt+=1) {

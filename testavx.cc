@@ -43,7 +43,7 @@ int32_t avx128sum(int32_t *x, int size) {
 }
 
 
-void printvector(const char * name, __m256i & v){
+void printvector(const char * name, const __m256i & v){
 	auto vi = (int32_t*)&v;
 	printf("%s:\t%d %d %d %d %d %d %d %d\n", name, vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7]);
 }
@@ -85,6 +85,64 @@ void avx256gather() {
 	printf("aftermask: %x\n", aftermask);
 }
 
+void checkgather() {
+	auto k_flags = 3;
+	auto k_status = 2;
+	auto k_vecsize = 8;
+
+	__m256i posv = _mm256_set_epi32(0,1,2,3,4,5,6,7);
+
+	__m256i mask = _minus1;
+	int32_t  returnflag[] = {0,1,0,1,2,2,1,0};
+	int32_t linestatus[] = {0,0,1,1,0,0,1,1};
+
+	/*
+	 *  0 0  1
+	 *  0 1  2
+	 *  1 0  1
+	 *  1 1  2
+	 *  2 0  2
+	 *  2 1  0
+	 */
+
+	__m256i count[k_flags*k_status] {};
+	int32_t out[k_flags*k_status] {};
+
+
+	for (int i = 0;  i < 1; ++i ) {
+		auto flagv = _mm256_load_si256((__m256i*)(returnflag));
+		auto statusv = _mm256_load_si256((__m256i*)(linestatus));
+
+		auto tmp1 = _mm256_slli_epi32(flagv, 1);
+		auto tmp2 = _mm256_add_epi32(statusv, tmp1);
+		DISPLAY(tmp2);
+		auto tmp3 = _mm256_slli_epi32(tmp2, 3); // mult by 8.
+		auto offsets = _mm256_add_epi32(tmp3, posv);
+
+
+		DISPLAY(offsets);
+		DISPLAY(mask);
+		auto currcountv = _mm256_i32gather_epi32((const int*)count, offsets, 4);
+		auto maskedcount = _mm256_and_si256(_ones, mask);
+		DISPLAY(maskedcount);
+		auto newcountv = _mm256_add_epi32(currcountv, maskedcount);
+		DISPLAY(newcountv);
+		for (int i = 0; i < k_vecsize; ++i){
+			auto offset = as_array(offsets)[i];
+			as_array(count)[offset] = as_array(newcountv)[i];
+		}
+	}
+
+	for (int f = 0; f < k_flags; ++f){
+		for (int s = 0; s < k_status; ++s){
+			DISPLAY(count[f*k_status + s]);
+			out[f*k_status + s] = sum_lanes_8(count[f*k_status + s]);
+			printf("%d %d: %d\n", f, s, out[f*k_status + s]);
+		}
+	}
+
+}
+
 void compare() {
 	int32_t x[512]; // alignment?
 	for (int i = 0; i < 512; ++i) {
@@ -104,5 +162,6 @@ void compare() {
 }
 
 int main() {
-	avx256gather();
+	checkgather();
+	//avx256gather();
 }

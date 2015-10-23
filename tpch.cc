@@ -297,45 +297,49 @@ void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int c
 	__m256i posv = _mm256_set_epi32(0,1,2,3,4,5,6,7);
 
 	for ( size_t i = 0; i < l->len; i+= k_vecsize) {
-		auto datev = _mm256_load_si256((__m256i*)&l->l_shipdate[i]);
+		auto datev = _mm256_stream_load_si256((__m256i*)&l->l_shipdate[i]);
 		auto compgt = _mm256_cmpgt_epi32(datev, cutoffv);
 		auto mask = _mm256_xor_si256(compgt, _minus1);
 
-			auto flagv = _mm256_load_si256((__m256i*)&(l->l_returnflag[i]));
-			auto statusv = _mm256_load_si256((__m256i*)&l->l_linestatus[i]);
 
-			auto quantityv = _mm256_load_si256((__m256i*)&l->l_quantity[i]);
-			auto pricev = _mm256_load_si256((__m256i*)&l->l_extendedprice[i]);
-			auto discountv = _mm256_load_si256((__m256i*)&l->l_discount[i]);
-			auto taxv = _mm256_load_si256((__m256i*)&l->l_tax[i]);
+			auto flagv = _mm256_stream_load_si256((__m256i*)&(l->l_returnflag[i]));
+			auto statusv = _mm256_stream_load_si256((__m256i*)&l->l_linestatus[i]);
 
-			auto actual_pcntX100 = _mm256_sub_epi32(_100s, discountv);
-			auto discounted_pricesX100 = _mm256_mullo_epi32(pricev, actual_pcntX100);
-
-			auto tax_pcntX100 = _mm256_add_epi32(_100s, taxv);
-			auto taxed_priceX10k = _mm256_mullo_epi32(discounted_pricesX100, tax_pcntX100);
-
-			// gather and add totals.
-			// position in the totals array: base + (flags*k_status) + status + posv
-			auto tmp1 = _mm256_slli_epi32(flagv, 1);
-			auto tmp2 = _mm256_add_epi32(statusv, tmp1);
-			auto tmp3 = _mm256_slli_epi32(tmp2, 3); // mult by 8.
-			auto offsets = _mm256_add_epi32(tmp3, posv);
+			__m256i offsets {};
+			{
+				// gather and add totals.
+				// position in the totals array: base + (flags*k_status) + status + posv
+				auto tmp1 = _mm256_slli_epi32(flagv, 1);
+				auto tmp2 = _mm256_add_epi32(statusv, tmp1);
+				auto tmp3 = _mm256_slli_epi32(tmp2, 3); // mult by 8.
+				offsets = _mm256_add_epi32(tmp3, posv);
+			}
 
 			__m256i new_count {};
 			gather_incr(count, offsets, mask, _ones, new_count);
 
+			auto quantityv = _mm256_stream_load_si256((__m256i*)&l->l_quantity[i]);
 			__m256i new_sum_qnt {};
 			gather_incr(sum_qt, offsets, mask, quantityv, new_sum_qnt);
 
+			auto pricev = _mm256_stream_load_si256((__m256i*)&l->l_extendedprice[i]);
 			__m256i new_sum_base_price {};
 			gather_incr(sum_base_price, offsets, mask, pricev, new_sum_base_price);
 
+
+			auto discountv = _mm256_stream_load_si256((__m256i*)&l->l_discount[i]);
+			auto actual_pcntX100 = _mm256_sub_epi32(_100s, discountv);
+			auto discounted_pricesX100 = _mm256_mullo_epi32(pricev, actual_pcntX100);
 			__m256i new_sum_disc_price {};
 			gather_incr(sum_disc_price, offsets, mask, discounted_pricesX100, new_sum_disc_price);
 
+
+			auto taxv = _mm256_stream_load_si256((__m256i*)&l->l_tax[i]);
+			auto tax_pcntX100 = _mm256_add_epi32(_100s, taxv);
+			auto taxed_priceX10k = _mm256_mullo_epi32(discounted_pricesX100, tax_pcntX100);
 			__m256i new_sum_charge {};
 			gather_incr(sum_charge, offsets, mask, taxed_priceX10k, new_sum_charge);
+
 
 			// manual scatter.
 			for (size_t elt = 0; elt < k_vecsize; elt+=1) {

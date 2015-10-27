@@ -383,6 +383,18 @@ void tpch_q1_columnar_cond_avx256(const LineitemColumnar *l, q1result out, int c
 	adjust_sums(out);
 }
 
+
+/**
+ * assumes data has been clustered by (group, date). At the very least, needs
+ * every elt. in the a single vector to be in the same group (though different vectors
+ * may go to different groups). It also needs all elts in the vector to either
+ * qualify on the date or none.
+ *
+ * These assumptions are not fully realistic, but suggest an implementation that does
+ * local clustering before aggregating could get some speedup, or also that data layout
+ * is more important that many other optimizations.
+ *
+ */
 void tpch_q1_columnar_clustered_avx256(const LineitemColumnar *l, q1result out, int cutoff) {
 	q1group_template<__m256i> accs[k_flags][k_status] {};
 	__m256i cutoffv = _mm256_set1_epi32(cutoff);
@@ -394,9 +406,9 @@ void tpch_q1_columnar_clustered_avx256(const LineitemColumnar *l, q1result out, 
 	auto compgt = _mm256_cmpgt_epi32(datev, cutoffv);
 	auto mask = _mm256_xor_si256(compgt, _minus1);
 
-	if (!_mm256_testz_si256(mask, mask)) { // may want to remove for high selectivity
-		currentflag = l->l_returnflag[i];
-		currentstatus = l->l_linestatus[i];
+	if (!_mm256_testz_si256(mask, mask)) { // assumes all or none qualify
+		currentflag = l->l_returnflag[i]; // assumes same flag for all vec elts.
+		currentstatus = l->l_linestatus[i]; // assumes same status for all vec. elts.
 
 		auto quantityv = _mm256_load_si256((__m256i*)&l->l_quantity[i]);
 		auto pricev = _mm256_load_si256((__m256i*)&l->l_extendedprice[i]);
